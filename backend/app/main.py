@@ -110,3 +110,47 @@ def get_threat_events(db: Session = Depends(get_db)):
     )
 
     return db.scalars(statement).all()
+
+@app.post(
+    "/alert-actions",
+    response_model=schemas.AlertActionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+def create_alert_action(
+    action_data: schemas.AlertActionCreate,
+    db: Session = Depends(get_db),
+):
+    threat_event = db.get(
+        models.ThreatEvent,
+        action_data.threat_event_id,
+    )
+
+    if threat_event is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Threat event not found.",
+        )
+
+    alert_action = models.AlertAction(
+        threat_event_id=action_data.threat_event_id,
+        action_type=action_data.action_type,
+        details=action_data.details,
+    )
+
+    db.add(alert_action)
+    db.commit()
+    db.refresh(alert_action)
+
+    return alert_action
+
+
+@app.get(
+    "/alert-actions",
+    response_model=List[schemas.AlertActionRead],
+)
+def get_alert_actions(db: Session = Depends(get_db)):
+    statement = select(models.AlertAction).order_by(
+        models.AlertAction.created_at.desc()
+    )
+
+    return db.scalars(statement).all()

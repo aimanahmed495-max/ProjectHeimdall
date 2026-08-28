@@ -144,3 +144,56 @@ def test_threat_events_are_ordered_by_highest_score(client):
     assert response.status_code == 200
     scores = [event["threat_score"] for event in response.json()]
     assert scores == [95, 60, 25]
+
+def test_create_and_get_alert_action(client):
+    source = create_source(client)
+
+    threat_response = client.post(
+        "/threat-events",
+        json={
+            "source_id": source["id"],
+            "threat_score": 95,
+            "summary": "Critical mock threat",
+            "metadata": {},
+        },
+    )
+    assert threat_response.status_code == 201
+    threat_event = threat_response.json()
+
+    action_response = client.post(
+        "/alert-actions",
+        json={
+            "threat_event_id": threat_event["id"],
+            "action_type": "PRIORITIZE_CAMERA_SCAN",
+            "details": {
+                "priority": "highest",
+                "mock": True,
+            },
+        },
+    )
+
+    assert action_response.status_code == 201
+
+    created_action = action_response.json()
+    assert created_action["threat_event_id"] == threat_event["id"]
+    assert created_action["status"] == "PENDING"
+    assert created_action["completed_at"] is None
+
+    get_response = client.get("/alert-actions")
+
+    assert get_response.status_code == 200
+    assert get_response.json() == [created_action]
+
+
+def test_alert_action_requires_existing_threat(client):
+    response = client.post(
+        "/alert-actions",
+        json={
+            "threat_event_id": 2147483647,
+            "action_type": "PRIORITIZE_CAMERA_SCAN",
+            "details": {},
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Threat event not found."

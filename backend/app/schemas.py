@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -35,5 +35,22 @@ class ThreatEventRead(BaseModel):
     summary: str
     metadata: Dict[str, Any] = Field(validation_alias="event_metadata")
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+class AlertActionCreate(BaseModel):
+    threat_event_id: int = Field(gt=0)
+    action_type: str = Field(min_length=1, max_length=50)
+    details: Dict[str, Any] = Field(default_factory=dict)
+
+
+class AlertActionRead(BaseModel):
+    id: int
+    threat_event_id: int
+    action_type: str
+    status: str
+    details: Dict[str, Any]
+    created_at: datetime
+    completed_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)

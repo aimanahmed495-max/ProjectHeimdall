@@ -1,6 +1,6 @@
 # Heimdall Core API
 
-Initial FastAPI and PostgreSQL backend for receiving, classifying, storing, and retrieving OSINT threat events.
+Initial FastAPI and PostgreSQL backend for receiving, classifying, storing, and retrieving OSINT threat events and their downstream alert actions.
 
 ## Current data flow
 
@@ -10,8 +10,11 @@ OSINT source
 → FastAPI validates the request
 → backend assigns a threat level
 → PostgreSQL stores the event
-→ GET /threat-events returns prioritized threats
+→ POST /alert-actions records a downstream response
+→ GET endpoints return prioritized threats and actions
 ```
+
+The current prototype records alert actions but does not yet communicate with the real computer-vision system.
 
 ## Requirements
 
@@ -72,6 +75,58 @@ Health endpoint:
 http://127.0.0.1:8000/health
 ```
 
+## Database tables
+
+### `osint_sources`
+
+Stores the OSINT components that produce threat information.
+
+Main fields:
+
+- `id`
+- `name`
+- `source_type`
+- `is_active`
+- `created_at`
+
+### `threat_events`
+
+Stores detected threats and references the OSINT source that produced each threat.
+
+Main fields:
+
+- `id`
+- `source_id`
+- `threat_score`
+- `threat_level`
+- `summary`
+- `metadata`
+- `created_at`
+
+### `alert_actions`
+
+Stores downstream actions connected to threat events.
+
+Main fields:
+
+- `id`
+- `threat_event_id`
+- `action_type`
+- `status`
+- `details`
+- `created_at`
+- `completed_at`
+
+The relationships are:
+
+```text
+One OSINT source
+→ many threat events
+
+One threat event
+→ many alert actions
+```
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
@@ -81,6 +136,8 @@ http://127.0.0.1:8000/health
 | `GET` | `/sources` | Retrieve OSINT sources |
 | `POST` | `/threat-events` | Validate, classify, and store a threat |
 | `GET` | `/threat-events` | Retrieve threats ordered by highest score |
+| `POST` | `/alert-actions` | Create a pending action for a threat |
+| `GET` | `/alert-actions` | Retrieve alert actions |
 
 ## Example source request
 
@@ -91,6 +148,11 @@ http://127.0.0.1:8000/health
   "is_active": true
 }
 ```
+
+The database generates:
+
+- `id`
+- `created_at`
 
 ## Example threat request
 
@@ -107,11 +169,33 @@ http://127.0.0.1:8000/health
 }
 ```
 
-The backend generates:
+The backend and database generate:
 
 - `id`
 - `threat_level`
 - `created_at`
+
+## Example alert-action request
+
+```json
+{
+  "threat_event_id": 1,
+  "action_type": "PRIORITIZE_CAMERA_SCAN",
+  "details": {
+    "priority": "highest",
+    "mock": true
+  }
+}
+```
+
+The backend and database generate:
+
+- `id`
+- `status` with an initial value of `PENDING`
+- `created_at`
+- `completed_at` with an initial value of `null`
+
+The action records what Heimdall should do because of a threat. Actually sending commands to the computer-vision system is future integration work.
 
 ## Prototype threat levels
 
@@ -139,7 +223,19 @@ Apply all migrations:
 (cd backend && alembic upgrade head)
 ```
 
-Roll back the initial schema:
+Roll back only the alert-actions migration:
+
+```bash
+(cd backend && alembic downgrade 1157e48637ae)
+```
+
+Reapply the latest migration:
+
+```bash
+(cd backend && alembic upgrade head)
+```
+
+Roll back the entire project schema:
 
 ```bash
 (cd backend && alembic downgrade base)
@@ -163,6 +259,19 @@ python -m pytest backend/tests -v
 ```
 
 The tests use real PostgreSQL transactions and roll back their changes, preserving existing local demo data.
+
+The current suite covers:
+
+- Database-connected health checks
+- Creating and retrieving OSINT sources
+- Duplicate source rejection
+- Creating and retrieving threat events
+- Threat-score validation
+- Missing and inactive source handling
+- Highest-score-first threat ordering
+- Threat-level boundary rules
+- Creating and retrieving alert actions
+- Missing threat handling for alert actions
 
 ## Stop local services
 
