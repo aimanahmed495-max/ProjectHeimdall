@@ -206,3 +206,5 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 postgres_data/
+# Local database backups
+backups/
