@@ -1,20 +1,34 @@
 # Heimdall Core API
 
-Initial FastAPI and PostgreSQL backend for receiving, classifying, storing, and retrieving OSINT threat events and their downstream alert actions.
+Prototype FastAPI and PostgreSQL backend for receiving, validating, storing, and retrieving data from Heimdall’s system modules.
+
+The database follows the five-table design from the May 2026 final report.
+
+## Prototype 1 scope
+
+Prototype 1 demonstrates:
+
+- PostgreSQL running through Docker
+- Five database tables
+- Alembic migrations and rollback
+- FastAPI endpoints
+- JSON validation
+- Automated API tests
+- Interactive Swagger documentation
+
+Prototype 1 does not include real OSINT ingestion, camera control, YOLO, LangGraph, WebSockets, or frontend integration.
 
 ## Current data flow
 
 ```text
-OSINT source
-→ POST /threat-events
-→ FastAPI validates the request
-→ backend assigns a threat level
-→ PostgreSQL stores the event
-→ POST /alert-actions records a downstream response
-→ GET endpoints return prioritized threats and actions
+A system module sends JSON to an API endpoint
+→ FastAPI validates the JSON
+→ SQLAlchemy creates a database record
+→ PostgreSQL stores the record
+→ a GET endpoint returns the stored data as JSON
 ```
 
-The current prototype records alert actions but does not yet communicate with the real computer-vision system.
+For Prototype 1, requests are submitted manually through Swagger or automated tests. Future modules will send the same requests automatically.
 
 ## Requirements
 
@@ -43,8 +57,6 @@ Create the local environment file:
 cp .env.example .env
 ```
 
-Update the values in `.env` if needed.
-
 Start PostgreSQL:
 
 ```bash
@@ -63,158 +75,201 @@ Start the API:
 uvicorn backend.app.main:app --reload
 ```
 
-Interactive API documentation:
+Open the interactive API documentation:
 
 ```text
 http://127.0.0.1:8000/docs
 ```
 
-Health endpoint:
+## Database decision
 
-```text
-http://127.0.0.1:8000/health
-```
+The final report proposed SQLite for local prototyping and PostgreSQL for the complete system.
+
+Prototype 1 uses PostgreSQL locally through Docker. This keeps development closer to the intended final database and allows PostgreSQL constraints, foreign keys, and migrations to be tested early.
+
+Docker provides an isolated environment in which PostgreSQL runs. Docker is not the database itself.
 
 ## Database tables
 
 ### `osint_sources`
 
-Stores the OSINT components that produce threat information.
+Stores approved public information sources.
 
-Main fields:
+Fields:
 
-- `id`
-- `name`
+- `source_id`
+- `source_name`
 - `source_type`
-- `is_active`
-- `created_at`
+- `url`
+- `reliability_score`
 
 ### `threat_events`
 
-Stores detected threats and references the OSINT source that produced each threat.
+Stores possible visual threat detections.
 
-Main fields:
+Fields:
 
-- `id`
-- `source_id`
-- `threat_score`
-- `threat_level`
-- `summary`
-- `metadata`
-- `created_at`
-
-### `alert_actions`
-
-Stores downstream actions connected to threat events.
-
-Main fields:
-
-- `id`
-- `threat_event_id`
-- `action_type`
+- `event_id`
+- `timestamp`
+- `object_class`
+- `confidence_score`
+- `camera_id`
 - `status`
-- `details`
-- `created_at`
-- `completed_at`
 
-The relationships are:
+### `alert_logs`
 
-```text
-One OSINT source
-→ many threat events
+Stores alerts associated with threat events.
 
-One threat event
-→ many alert actions
-```
+Fields:
+
+- `alert_id`
+- `event_id`
+- `alert_time`
+- `alert_level`
+- `message`
+- `acknowledged`
+
+### `camera_states`
+
+Stores camera operating-state history.
+
+Fields:
+
+- `state_id`
+- `camera_id`
+- `mode`
+- `fps`
+- `resolution`
+- `timestamp`
+
+These are database records only. Prototype 1 does not control physical cameras.
+
+### `system_logs`
+
+Stores messages produced by Heimdall modules.
+
+Fields:
+
+- `log_id`
+- `event_id`
+- `log_time`
+- `module`
+- `message`
+
+`event_id` is optional because some system activity may not belong to a specific threat.
+
+More database details are available in `DATABASE_DESIGN.md`.
+
+## Relationships
+
+- One threat event can have multiple alert logs.
+- One threat event can have multiple system logs.
+- A system log can exist without a threat event.
+- Foreign keys prevent alert and event-related log records from referencing nonexistent threats.
 
 ## API endpoints
 
 | Method | Endpoint | Purpose |
 |---|---|---|
 | `GET` | `/health` | Verify the API and PostgreSQL connection |
-| `POST` | `/sources` | Create an OSINT source |
+| `POST` | `/sources` | Store an OSINT source |
 | `GET` | `/sources` | Retrieve OSINT sources |
-| `POST` | `/threat-events` | Validate, classify, and store a threat |
-| `GET` | `/threat-events` | Retrieve threats ordered by highest score |
-| `POST` | `/alert-actions` | Create a pending action for a threat |
-| `GET` | `/alert-actions` | Retrieve alert actions |
+| `POST` | `/threat-events` | Store a threat event |
+| `GET` | `/threat-events` | Retrieve threat events |
+| `POST` | `/alert-logs` | Store an alert for a threat |
+| `GET` | `/alert-logs` | Retrieve alert logs |
+| `POST` | `/camera-states` | Store a camera-state record |
+| `GET` | `/camera-states` | Retrieve camera-state records |
+| `POST` | `/system-logs` | Store a system-log record |
+| `GET` | `/system-logs` | Retrieve system logs |
 
-## Example source request
+## Example requests
 
-```json
-{
-  "name": "Mock OSINT Agent",
-  "source_type": "OSINT",
-  "is_active": true
-}
-```
-
-The database generates:
-
-- `id`
-- `created_at`
-
-## Example threat request
+### OSINT source
 
 ```json
 {
-  "source_id": 1,
-  "threat_score": 82,
-  "summary": "Suspicious activity detected near a monitored location",
-  "metadata": {
-    "location": "Wichita",
-    "keyword": "suspicious activity",
-    "mock": true
-  }
+  "source_name": "National Weather Service",
+  "source_type": "Public API",
+  "url": "https://www.weather.gov/",
+  "reliability_score": 0.95
 }
 ```
 
-The backend and database generate:
-
-- `id`
-- `threat_level`
-- `created_at`
-
-## Example alert-action request
+### Threat event
 
 ```json
 {
-  "threat_event_id": 1,
-  "action_type": "PRIORITIZE_CAMERA_SCAN",
-  "details": {
-    "priority": "highest",
-    "mock": true
-  }
+  "object_class": "Firearm",
+  "confidence_score": 0.92,
+  "camera_id": 1,
+  "status": "Pending"
 }
 ```
 
-The backend and database generate:
+### Alert log
 
-- `id`
-- `status` with an initial value of `PENDING`
-- `created_at`
-- `completed_at` with an initial value of `null`
+```json
+{
+  "event_id": 1,
+  "alert_level": "Critical",
+  "message": "High-confidence firearm detection",
+  "acknowledged": false
+}
+```
 
-The action records what Heimdall should do because of a threat. Actually sending commands to the computer-vision system is future integration work.
+### Camera state
 
-## Prototype threat levels
+```json
+{
+  "camera_id": 1,
+  "mode": "Dormant",
+  "fps": 5,
+  "resolution": "720p"
+}
+```
 
-| Score | Level |
-|---:|---|
-| 0–30 | `NORMAL` |
-| 31–50 | `SUSPICIOUS` |
-| 51–70 | `ELEVATED` |
-| 71–90 | `HIGH_THREAT` |
-| 91–100 | `CRITICAL` |
+Valid prototype modes are `Dormant` and `Active`.
 
-These ranges are prototype defaults and may change after team review.
+### System log
+
+```json
+{
+  "event_id": null,
+  "module": "OSINT",
+  "message": "OSINT polling started"
+}
+```
+
+## Validation
+
+FastAPI and Pydantic reject invalid requests before database records are created.
+
+Current examples include:
+
+- Confidence and reliability scores must be from `0.0` to `1.0`.
+- Camera IDs must be positive.
+- FPS must be positive.
+- Camera mode must be `Dormant` or `Active`.
+- Required text fields cannot be empty.
+- Duplicate OSINT source names return a conflict response.
+- Alert logs cannot reference missing threat events.
+- System logs with an event ID cannot reference missing threat events.
+
+PostgreSQL also enforces important score ranges and foreign-key relationships.
 
 ## Database migrations
 
-Show the current migration:
+Show the current revision:
 
 ```bash
 (cd backend && alembic current)
+```
+
+Check whether the models and database match:
+
+```bash
+(cd backend && alembic check)
 ```
 
 Apply all migrations:
@@ -223,25 +278,26 @@ Apply all migrations:
 (cd backend && alembic upgrade head)
 ```
 
-Roll back only the alert-actions migration:
+Roll back the report-alignment migration:
 
 ```bash
-(cd backend && alembic downgrade 1157e48637ae)
+(cd backend && alembic downgrade 226eb47c96bb)
 ```
 
-Reapply the latest migration:
+Reapply it:
 
 ```bash
 (cd backend && alembic upgrade head)
 ```
 
-Roll back the entire project schema:
+Back up important data before destructive migrations:
 
 ```bash
-(cd backend && alembic downgrade base)
+mkdir -p backups
+docker compose exec -T postgres pg_dump -U heimdall -d heimdall > backups/heimdall_backup.sql
 ```
 
-Do not roll back a database containing data you need unless it has been backed up.
+Local database backups are ignored by Git.
 
 ## Tests
 
@@ -252,26 +308,25 @@ docker compose up -d postgres
 (cd backend && alembic upgrade head)
 ```
 
-Run the test suite from the repository root:
+Run the tests from the repository root:
 
 ```bash
 python -m pytest backend/tests -v
 ```
 
-The tests use real PostgreSQL transactions and roll back their changes, preserving existing local demo data.
-
-The current suite covers:
+The current suite contains 18 tests covering:
 
 - Database-connected health checks
-- Creating and retrieving OSINT sources
-- Duplicate source rejection
-- Creating and retrieving threat events
-- Threat-score validation
-- Missing and inactive source handling
-- Highest-score-first threat ordering
-- Threat-level boundary rules
-- Creating and retrieving alert actions
-- Missing threat handling for alert actions
+- Creating and retrieving all five record types
+- Duplicate OSINT source handling
+- Reliability-score validation
+- Confidence-score validation
+- Camera ID, mode, and FPS validation
+- Missing threat handling for alert logs
+- System logs with and without threat events
+- Missing threat handling for system logs
+
+The tests use real PostgreSQL transactions and roll back their changes so local demo data is preserved.
 
 ## Stop local services
 
