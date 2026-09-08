@@ -36,6 +36,37 @@ For Prototype 1, requests are submitted manually through Swagger or automated te
 - Docker Desktop
 - Docker Compose
 
+## Run the complete backend with Docker
+
+Build and start both PostgreSQL and FastAPI:
+
+```bash
+docker compose up -d --build
+```
+
+Check container status:
+
+```bash
+docker compose ps
+```
+
+The PostgreSQL health check must pass before the API starts. The API container automatically applies pending Alembic migrations and then starts Uvicorn.
+
+Open:
+
+```text
+API documentation: http://127.0.0.1:8000/docs
+Health check:      http://127.0.0.1:8000/health
+```
+
+View API logs:
+
+```bash
+docker compose logs api
+```
+
+The local setup below remains available when developers want to run FastAPI from a Python virtual environment while PostgreSQL runs through Docker.
+
 ## Local setup
 
 From the repository root, create and activate a virtual environment:

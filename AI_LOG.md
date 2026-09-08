@@ -114,3 +114,33 @@ The team requested a separate API skeleton branch with endpoints that can accept
 **Prototype limitation:**
 
 These endpoints currently accept manual Swagger requests and automated test data. Real OSINT, physical cameras, YOLO, LangGraph, WebSockets, and frontend integration are not implemented.
+
+## 2026-09-08 — Complete backend Dockerization
+
+**Developer:** Arham Sadid Hossain
+
+**AI assistance used for:**
+
+- Adding configurable PostgreSQL host and port settings
+- Creating the FastAPI Dockerfile
+- Creating `.dockerignore`
+- Adding the API service and PostgreSQL health check to Docker Compose
+- Documenting containerized startup commands
+
+**Changes made:**
+
+- Added `backend/Dockerfile`.
+- Added a root `.dockerignore`.
+- Added the FastAPI `api` service to Docker Compose.
+- Configured the API container to connect to the `postgres` service.
+- Configured the API to wait for PostgreSQL health.
+- Configured Alembic migrations to run before Uvicorn starts.
+- Preserved support for running FastAPI locally through `.venv`.
+
+**Verification completed:**
+
+- All 18 API tests still passed after the database connection update.
+- The API Docker image built successfully.
+- PostgreSQL reported healthy.
+- The API container started successfully.
+- `GET /health` returned HTTP 200 with the database connected.
