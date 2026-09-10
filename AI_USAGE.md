@@ -1,6 +1,7 @@
 # Heimdall — Frontend AI Development Log
 
 **Developer:** Zareer Khan 
+
 **Branch:** `feature/2-frontend`  
 **Related issue:** #2 — Implementation of frontend dashboard prototype  
 **AI tools:** Claude and ChatGPT 
