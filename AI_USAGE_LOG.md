@@ -96,3 +96,20 @@ The HTML test checks text rather than executing JavaScript. API and WebSocket te
 - Add browser interaction tests and review error handling, duplicate events, and safe rendering of incoming data.
 - Verify remaining design controls before presenting them as completed features.
 - Review this log before committing and append entries for future AI-assisted changes.
+
+## Frontend containerization and repository hygiene
+
+**Goal:** Package the frontend consistently and prevent local environment data from being committed.
+
+**Work completed**
+- Added `frontend/Dockerfile` using Python 3.11 and Streamlit on port 8501.
+- Added `.dockerignore` to exclude Git metadata, virtual environments, caches, and local environment files.
+- Replaced the tracked `.env` with a sanitized `.env.example`.
+- Renamed `AI_USAGE.md` to `AI_USAGE_LOG.md` to match the project rubric.
+- Built the `heimdall-frontend` Docker image and ran it locally.
+- Verified the containerized dashboard against the frontend mock API.
+- Ran the automated test suite after the repository changes.
+
+**AI involvement:** ChatGPT provided Dockerfile guidance, explained Docker installation and commands, identified a browser-origin mismatch during container testing, and guided the environment-file cleanup and Git checks.
+
+**Outcome:** The frontend ran successfully from a Docker container, and five automated tests passed with one dependency deprecation warning. Production-backend polling remains pending until the adapter routes and response contract are available.
