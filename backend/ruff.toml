@@ -1,8 +1,4 @@
+extend-exclude = ["alembic/versions"]
+
 [lint]
-ignore = [
-    "B008",
-    "UP006",
-    "UP035",
-    "UP045",
-    "I001",
-]
+select = ["E9", "F"]
