@@ -208,3 +208,4 @@ __marimo__/
 postgres_data/
 # Local database backups
 backups/
+vision/yolov8n.pt
