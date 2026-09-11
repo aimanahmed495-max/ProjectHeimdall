@@ -21,3 +21,10 @@
 **AI assistance used for:** Drafting the camera-agnostic FrameSource abstraction and ThreatDetector (detector.py), the Heimdall API client wrapper (vision_client.py), and the pipeline entrypoint (main.py), following the same OOP pattern as the OSINT module.
 
 **Verification:** Ran the full pipeline against the live Heimdall Core API. Processed 3 test images (car, truck, person) through YOLOv8n, confirmed 19 detections posted as threat events and system logs, and verified camera state transitioned Active → Dormant correctly.
+## 2026-09-10 — chore: fill in AI usage log and stop tracking downloaded model weights (2640a17)
+
+**Files changed:** .gitignore,AI_USAGE_LOG.md,vision/yolov8n.pt
+
+**AI assistance used for:** <!-- fill in one line -->
+
+**Verification:** <!-- fill in one line -->
