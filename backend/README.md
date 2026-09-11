@@ -330,6 +330,16 @@ docker compose exec -T postgres pg_dump -U heimdall -d heimdall > backups/heimda
 
 Local database backups are ignored by Git.
 
+## Seed sample data
+
+After migrations are applied, load fake demo rows for local development:
+
+```bash
+(cd backend && python -m app.seed)
+```
+
+The seeder is idempotent. Running it again skips rows that already exist and does not violate unique constraints.
+
 ## Tests
 
 Make sure PostgreSQL is running and migrated:
