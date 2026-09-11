@@ -2,7 +2,7 @@
 
 Prototype LangGraph agent that turns mock open-source alerts into Heimdall threat events.
 
-The pipeline loads a few fake OSINT sources and raw alert strings, registers the sources with the existing FastAPI backend, then runs each alert through a three-node LangGraph: ingest the text, classify a likely visual object with Groq's Llama 3.3 model, and post a threat event plus a system log to `http://localhost:8000`. This module talks only to the real `/sources`, `/threat-events`, and `/system-logs` endpoints; it does not start Docker or the API itself.
+The pipeline loads a few fake OSINT sources and raw alert strings, registers the sources with the existing FastAPI backend, then runs each alert through a three-node LangGraph: ingest the text, classify a likely visual object with Groq's GPT-OSS 20B model, and post a threat event plus a system log to `http://localhost:8000`. This module talks only to the real `/sources`, `/threat-events`, and `/system-logs` endpoints; it does not start Docker or the API itself.
 
 ## Requirements
 
