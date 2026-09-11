@@ -40,6 +40,7 @@ jobs:
           POSTGRES_DB: test
           POSTGRES_HOST: localhost
           POSTGRES_PORT: "5432"
+          PYTHONPATH: .
         run: pytest backend/tests
 
   frontend:
