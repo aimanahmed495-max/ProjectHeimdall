@@ -1,0 +1,20 @@
+[
+  {
+    "source_name": "District 4 Police Scanner",
+    "source_type": "Public Scanner",
+    "url": "https://example.com/feeds/district-4-scanner",
+    "reliability_score": 0.78
+  },
+  {
+    "source_name": "Neighborhood Watch Network",
+    "source_type": "Community Report",
+    "url": "https://example.com/feeds/neighborhood-watch",
+    "reliability_score": 0.61
+  },
+  {
+    "source_name": "Local News Crime Desk",
+    "source_type": "News RSS",
+    "url": "https://example.com/feeds/local-news-crime",
+    "reliability_score": 0.7
+  }
+]
