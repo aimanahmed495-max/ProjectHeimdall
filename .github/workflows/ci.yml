@@ -33,6 +33,15 @@ jobs:
           pip install ruff
       - name: Lint with ruff
         run: ruff check backend/
+      - name: Run database migrations
+        working-directory: backend
+        env:
+          POSTGRES_USER: test
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: test
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: "5432"
+        run: alembic upgrade head
       - name: Run backend tests
         env:
           POSTGRES_USER: test
