@@ -18,7 +18,9 @@ def db_session():
         join_transaction_mode="create_savepoint",
     )
 
-    session.execute(delete(models.AlertAction))
+    session.execute(delete(models.AlertLog))
+    session.execute(delete(models.SystemLog))
+    session.execute(delete(models.CameraState))
     session.execute(delete(models.ThreatEvent))
     session.execute(delete(models.OsintSource))
     session.flush()

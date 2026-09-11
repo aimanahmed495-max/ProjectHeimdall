@@ -72,3 +72,75 @@ The team confirmed that the database should follow the five-table design in the 
 - Confirmed the old schema returned.
 - Reapplied migration `017083aec8b1`.
 - Ran `alembic check` with no new operations detected.
+
+## 2026-09-08 — Five-module API skeleton
+
+**Developer:** Arham Sadid Hossain
+
+**Reason for change:**
+
+The team requested a separate API skeleton branch with endpoints that can accept data from Heimdall’s different modules.
+
+**AI assistance used for:**
+
+- Updating Pydantic request and response schemas
+- Updating FastAPI endpoints for the report’s five tables
+- Replacing obsolete tests
+- Removing the experimental threat-level and alert-action logic
+- Updating backend documentation
+
+**Changes made:**
+
+- Created the `feature/2-api-skeleton` branch.
+- Updated the API version to `0.2.0`.
+- Added POST and GET endpoints for:
+  - OSINT sources
+  - threat events
+  - alert logs
+  - camera states
+  - system logs
+- Kept the PostgreSQL health endpoint.
+- Removed the obsolete `alert_actions` API.
+- Removed the old 0–100 automatic threat-level calculation.
+- Added validation for scores, camera IDs, camera modes, FPS values, duplicate sources, and foreign-key references.
+- Updated the README for Prototype 1.
+
+**Verification completed:**
+
+- Python files compiled successfully.
+- All 18 updated automated tests passed.
+- Tests covered all five report modules and important invalid-data cases.
+
+**Prototype limitation:**
+
+These endpoints currently accept manual Swagger requests and automated test data. Real OSINT, physical cameras, YOLO, LangGraph, WebSockets, and frontend integration are not implemented.
+
+## 2026-09-08 — Complete backend Dockerization
+
+**Developer:** Arham Sadid Hossain
+
+**AI assistance used for:**
+
+- Adding configurable PostgreSQL host and port settings
+- Creating the FastAPI Dockerfile
+- Creating `.dockerignore`
+- Adding the API service and PostgreSQL health check to Docker Compose
+- Documenting containerized startup commands
+
+**Changes made:**
+
+- Added `backend/Dockerfile`.
+- Added a root `.dockerignore`.
+- Added the FastAPI `api` service to Docker Compose.
+- Configured the API container to connect to the `postgres` service.
+- Configured the API to wait for PostgreSQL health.
+- Configured Alembic migrations to run before Uvicorn starts.
+- Preserved support for running FastAPI locally through `.venv`.
+
+**Verification completed:**
+
+- All 18 API tests still passed after the database connection update.
+- The API Docker image built successfully.
+- PostgreSQL reported healthy.
+- The API container started successfully.
+- `GET /health` returned HTTP 200 with the database connected.
