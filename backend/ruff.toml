@@ -1,0 +1,4 @@
+extend-exclude = ["alembic"]
+
+[lint]
+select = ["E9", "F"]
