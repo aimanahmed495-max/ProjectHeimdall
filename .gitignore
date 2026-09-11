@@ -205,6 +205,10 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+.DS_Store
+.env
+.env.*
+!.env.example
 postgres_data/
 # Local database backups
 backups/
