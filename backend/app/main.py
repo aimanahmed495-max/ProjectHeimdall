@@ -58,9 +58,7 @@ def create_source(
     tags=["OSINT Sources"],
 )
 def get_sources(db: Session = Depends(get_db)):
-    statement = select(models.OsintSource).order_by(
-        models.OsintSource.source_id
-    )
+    statement = select(models.OsintSource).order_by(models.OsintSource.source_id)
     return db.scalars(statement).all()
 
 
@@ -74,6 +72,27 @@ def create_threat_event(
     threat_data: schemas.ThreatEventCreate,
     db: Session = Depends(get_db),
 ):
+    if threat_data.source_id is not None:
+        source = db.get(models.OsintSource, threat_data.source_id)
+
+        if source is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="OSINT source not found.",
+            )
+
+    camera_state = db.scalar(
+        select(models.CameraState).where(
+            models.CameraState.camera_id == threat_data.camera_id
+        )
+    )
+
+    if camera_state is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera state not found.",
+        )
+
     threat_event = models.ThreatEvent(**threat_data.model_dump())
 
     db.add(threat_event)
@@ -147,9 +166,17 @@ def create_camera_state(
     camera_state = models.CameraState(**camera_data.model_dump())
 
     db.add(camera_state)
-    db.commit()
-    db.refresh(camera_state)
 
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="A camera state with this camera ID already exists.",
+        )
+
+    db.refresh(camera_state)
     return camera_state
 
 
