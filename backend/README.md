@@ -362,7 +362,7 @@ Run the tests from the repository root:
 python -m pytest backend/tests -v
 ```
 
-The current suite contains 21 tests covering:
+The current suite contains 22 tests covering:
 
 - Database-connected health checks
 - Creating and retrieving all five record types
@@ -376,6 +376,7 @@ The current suite contains 21 tests covering:
 - Missing threat handling for alert logs
 - System logs with and without threat events
 - Missing threat handling for system logs
+- Seeder idempotency with existing unique camera IDs
 
 The tests use real PostgreSQL transactions and roll back their changes so local demo data is preserved.
 ## Stop local services

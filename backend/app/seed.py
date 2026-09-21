@@ -94,6 +94,12 @@ class DatabaseSeeder:
             "fps": 5,
             "resolution": "720p",
         },
+        {
+            "camera_id": 3,
+            "mode": "Dormant",
+            "fps": 5,
+            "resolution": "720p",
+        },
     ]
 
     def __init__(self, session: Session) -> None:
@@ -160,9 +166,6 @@ class DatabaseSeeder:
             existing = self._session.scalar(
                 select(models.CameraState).where(
                     models.CameraState.camera_id == payload["camera_id"],
-                    models.CameraState.mode == payload["mode"],
-                    models.CameraState.fps == payload["fps"],
-                    models.CameraState.resolution == payload["resolution"],
                 )
             )
             if existing is not None:
@@ -190,8 +193,7 @@ class DatabaseSeeder:
             existing = self._session.scalar(
                 select(models.ThreatEvent).where(
                     models.ThreatEvent.object_class == payload["object_class"],
-                    models.ThreatEvent.confidence_score
-                    == payload["confidence_score"],
+                    models.ThreatEvent.confidence_score == payload["confidence_score"],
                     models.ThreatEvent.camera_id == payload["camera_id"],
                     models.ThreatEvent.status == payload["status"],
                 )
@@ -221,9 +223,7 @@ class DatabaseSeeder:
                 0,
                 {
                     "alert_level": "Critical",
-                    "message": (
-                        "Demo alert: high-confidence person near camera 1"
-                    ),
+                    "message": ("Demo alert: high-confidence person near camera 1"),
                     "acknowledged": False,
                 },
             ),
@@ -231,9 +231,7 @@ class DatabaseSeeder:
                 1,
                 {
                     "alert_level": "Warning",
-                    "message": (
-                        "Demo alert: vehicle lingering in the south lot"
-                    ),
+                    "message": ("Demo alert: vehicle lingering in the south lot"),
                     "acknowledged": False,
                 },
             ),
@@ -241,9 +239,7 @@ class DatabaseSeeder:
                 2,
                 {
                     "alert_level": "Info",
-                    "message": (
-                        "Demo alert: unclassified motion on camera 2"
-                    ),
+                    "message": ("Demo alert: unclassified motion on camera 2"),
                     "acknowledged": True,
                 },
             ),
@@ -261,9 +257,7 @@ class DatabaseSeeder:
                 self._skipped["alert_logs"] += 1
                 continue
 
-            self._session.add(
-                models.AlertLog(event_id=event.event_id, **payload)
-            )
+            self._session.add(models.AlertLog(event_id=event.event_id, **payload))
             self._inserted["alert_logs"] += 1
 
     def seed_system_logs(self) -> None:
@@ -285,9 +279,7 @@ class DatabaseSeeder:
             {
                 "event_id": second_event_id,
                 "module": "osint-agent",
-                "message": (
-                    "Demo: OSINT classified a nearby break-in report"
-                ),
+                "message": ("Demo: OSINT classified a nearby break-in report"),
             },
             {
                 "event_id": None,
@@ -328,9 +320,7 @@ class DatabaseSeeder:
         ):
             inserted = self._inserted[table_name]
             skipped = self._skipped[table_name]
-            print(
-                f"  {table_name}: inserted {inserted}, skipped {skipped}"
-            )
+            print(f"  {table_name}: inserted {inserted}, skipped {skipped}")
         print("Done.")
 
 
