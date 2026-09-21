@@ -75,6 +75,43 @@ class HeimdallVisionClient:
         self._ensure_success(response, expected_status=201)
         return response.json()
 
+    def set_camera_state(
+        self,
+        state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Register a camera or update its existing state."""
+
+        camera_id = state["camera_id"]
+        path = f"/camera-states/{camera_id}"
+
+        lookup_response = self._request("GET", path)
+
+        if lookup_response.status_code == 404:
+            return self.post_camera_state(state)
+
+        self._ensure_success(
+            lookup_response,
+            expected_status=200,
+        )
+
+        update_payload = {
+            "mode": state["mode"],
+            "fps": state["fps"],
+            "resolution": state["resolution"],
+        }
+
+        update_response = self._request(
+            "PUT",
+            path,
+            json_body=update_payload,
+        )
+        self._ensure_success(
+            update_response,
+            expected_status=200,
+        )
+
+        return update_response.json()
+
     def post_threat_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Create a threat event with ``POST /threat-events``.
 

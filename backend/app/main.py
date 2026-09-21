@@ -1,7 +1,7 @@
 from typing import List
 
 from fastapi import Depends, FastAPI, HTTPException, status
-from sqlalchemy import select, text
+from sqlalchemy import func, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -190,6 +190,59 @@ def get_camera_states(db: Session = Depends(get_db)):
         models.CameraState.timestamp.desc(),
     )
     return db.scalars(statement).all()
+
+
+@app.get(
+    "/camera-states/{camera_id}",
+    response_model=schemas.CameraStateRead,
+    tags=["Camera States"],
+)
+def get_camera_state(
+    camera_id: int,
+    db: Session = Depends(get_db),
+):
+    camera_state = db.scalar(
+        select(models.CameraState).where(models.CameraState.camera_id == camera_id)
+    )
+
+    if camera_state is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera state not found.",
+        )
+
+    return camera_state
+
+
+@app.put(
+    "/camera-states/{camera_id}",
+    response_model=schemas.CameraStateRead,
+    tags=["Camera States"],
+)
+def update_camera_state(
+    camera_id: int,
+    camera_data: schemas.CameraStateUpdate,
+    db: Session = Depends(get_db),
+):
+    camera_state = db.scalar(
+        select(models.CameraState).where(models.CameraState.camera_id == camera_id)
+    )
+
+    if camera_state is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Camera state not found.",
+        )
+
+    camera_state.mode = camera_data.mode
+    camera_state.fps = camera_data.fps
+    camera_state.resolution = camera_data.resolution
+    camera_state.timestamp = func.now()
+
+    db.commit()
+    db.refresh(camera_state)
+
+    return camera_state
 
 
 @app.post(

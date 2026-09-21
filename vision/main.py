@@ -192,9 +192,9 @@ class VisionPipelineApp:
         return threat_event, system_log
 
     def _set_camera_mode(self, mode: str) -> Dict[str, Any]:
-        """Post a camera-state record with placeholder fps and resolution."""
+        """Register or update the camera's current operating state."""
 
-        return self._client.post_camera_state(
+        return self._client.set_camera_state(
             {
                 "camera_id": self.CAMERA_ID,
                 "mode": mode,

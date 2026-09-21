@@ -50,8 +50,7 @@ class AlertLogRead(AlertLogCreate):
     model_config = ConfigDict(from_attributes=True)
 
 
-class CameraStateCreate(BaseModel):
-    camera_id: int = Field(gt=0)
+class CameraStateBase(BaseModel):
     mode: str = Field(
         min_length=1,
         max_length=20,
@@ -59,6 +58,14 @@ class CameraStateCreate(BaseModel):
     )
     fps: int = Field(gt=0)
     resolution: str = Field(min_length=1, max_length=30)
+
+
+class CameraStateCreate(CameraStateBase):
+    camera_id: int = Field(gt=0)
+
+
+class CameraStateUpdate(CameraStateBase):
+    pass
 
 
 class CameraStateRead(CameraStateCreate):

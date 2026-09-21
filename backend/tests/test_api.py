@@ -273,6 +273,84 @@ def test_duplicate_camera_id_returns_conflict(client):
     )
 
 
+def test_get_camera_state_by_camera_id(client):
+    created_camera = create_camera_state(client)
+
+    response = client.get(f"/camera-states/{created_camera['camera_id']}")
+
+    assert response.status_code == 200
+
+    camera_state = response.json()
+    assert camera_state["state_id"] == created_camera["state_id"]
+    assert camera_state["camera_id"] == 1
+    assert camera_state["mode"] == "Active"
+    assert camera_state["fps"] == 30
+    assert camera_state["resolution"] == "1080p"
+
+
+def test_get_missing_camera_state_returns_not_found(client):
+    response = client.get("/camera-states/2147483647")
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Camera state not found."
+
+
+def test_update_camera_state(client):
+    created_camera = create_camera_state(client)
+
+    response = client.put(
+        f"/camera-states/{created_camera['camera_id']}",
+        json={
+            "mode": "Dormant",
+            "fps": 5,
+            "resolution": "720p",
+        },
+    )
+
+    assert response.status_code == 200
+
+    updated_camera = response.json()
+    assert updated_camera["state_id"] == created_camera["state_id"]
+    assert updated_camera["camera_id"] == created_camera["camera_id"]
+    assert updated_camera["mode"] == "Dormant"
+    assert updated_camera["fps"] == 5
+    assert updated_camera["resolution"] == "720p"
+
+    get_response = client.get(f"/camera-states/{created_camera['camera_id']}")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["mode"] == "Dormant"
+
+
+def test_update_missing_camera_state_returns_not_found(client):
+    response = client.put(
+        "/camera-states/2147483647",
+        json={
+            "mode": "Dormant",
+            "fps": 5,
+            "resolution": "720p",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Camera state not found."
+
+
+def test_update_camera_state_rejects_invalid_data(client):
+    created_camera = create_camera_state(client)
+
+    response = client.put(
+        f"/camera-states/{created_camera['camera_id']}",
+        json={
+            "mode": "Sleeping",
+            "fps": 0,
+            "resolution": "720p",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 @pytest.mark.parametrize("mode", ["Sleeping", "High Alert"])
 def test_camera_state_rejects_unknown_mode(client, mode):
     response = client.post(
