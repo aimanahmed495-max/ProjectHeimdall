@@ -20,8 +20,8 @@ def db_session():
 
     session.execute(delete(models.AlertLog))
     session.execute(delete(models.SystemLog))
-    session.execute(delete(models.CameraState))
     session.execute(delete(models.ThreatEvent))
+    session.execute(delete(models.CameraState))
     session.execute(delete(models.OsintSource))
     session.flush()
 

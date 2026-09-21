@@ -297,3 +297,14 @@ These endpoints currently accept manual Swagger requests and automated test data
 **AI assistance used for:** Drafting the `DatabaseSeeder` class covering all five tables in dependency order, with idempotency checks to avoid duplicate inserts on repeat runs.
 
 **Verification:** Ran against the live database: inserted 4 sources, 2 camera states, 6 threat events, 3 alert logs, 4 system logs. Confirmed via GET /threat-events that seeded data is retrievable through the real API. Re-ran a second time to confirm no duplicates were created.
+
+## 2026-09-20 — Database Relationship Improvements
+
+**Developer:** Arham Sadid Hossain
+**Branch:** `feature/3-database-relationships`
+
+**AI assistance:** Reviewed relational-database concepts and assisted with troubleshooting migration issues.
+
+**Human work completed:** Implemented database relationships, constraints, API validation, migration updates, tests, and documentation.
+
+**Verification:** Migration upgrade and rollback succeeded, all 22 backend tests passed, the database seeder remained idempotent, and the Docker API health check succeeded.

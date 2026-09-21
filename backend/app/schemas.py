@@ -18,6 +18,7 @@ class OsintSourceRead(OsintSourceCreate):
 
 
 class ThreatEventCreate(BaseModel):
+    source_id: Optional[int] = Field(default=None, gt=0)
     object_class: str = Field(min_length=1, max_length=100)
     confidence_score: float = Field(ge=0, le=1)
     camera_id: int = Field(gt=0)

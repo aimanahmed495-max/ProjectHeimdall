@@ -10,6 +10,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     func,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -45,6 +46,10 @@ class OsintSource(Base):
         nullable=False,
     )
 
+    threat_events: Mapped[List["ThreatEvent"]] = relationship(
+        back_populates="osint_source",
+    )
+
 
 class ThreatEvent(Base):
     __tablename__ = "threat_events"
@@ -61,6 +66,15 @@ class ThreatEvent(Base):
         nullable=False,
         server_default=func.now(),
     )
+    source_id: Mapped[Optional[int]] = mapped_column(
+        ForeignKey(
+            "osint_sources.source_id",
+            name="fk_threat_events_source_id_osint_sources",
+            ondelete="SET NULL",
+        ),
+        nullable=True,
+        index=True,
+    )
     object_class: Mapped[str] = mapped_column(
         String(100),
         nullable=False,
@@ -70,7 +84,11 @@ class ThreatEvent(Base):
         nullable=False,
     )
     camera_id: Mapped[int] = mapped_column(
-        Integer,
+        ForeignKey(
+            "camera_states.camera_id",
+            name="fk_threat_events_camera_id_camera_states",
+            ondelete="RESTRICT",
+        ),
         nullable=False,
         index=True,
     )
@@ -82,6 +100,12 @@ class ThreatEvent(Base):
         index=True,
     )
 
+    osint_source: Mapped[Optional["OsintSource"]] = relationship(
+        back_populates="threat_events",
+    )
+    camera_state: Mapped["CameraState"] = relationship(
+        back_populates="threat_events",
+    )
     alert_logs: Mapped[List["AlertLog"]] = relationship(
         back_populates="threat_event",
         cascade="all, delete-orphan",
@@ -96,7 +120,10 @@ class AlertLog(Base):
 
     alert_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[int] = mapped_column(
-        ForeignKey("threat_events.event_id", ondelete="CASCADE"),
+        ForeignKey(
+            "threat_events.event_id",
+            ondelete="CASCADE",
+        ),
         nullable=False,
         index=True,
     )
@@ -128,6 +155,12 @@ class AlertLog(Base):
 
 class CameraState(Base):
     __tablename__ = "camera_states"
+    __table_args__ = (
+        UniqueConstraint(
+            "camera_id",
+            name="uq_camera_states_camera_id",
+        ),
+    )
 
     state_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     camera_id: Mapped[int] = mapped_column(
@@ -153,13 +186,20 @@ class CameraState(Base):
         server_default=func.now(),
     )
 
+    threat_events: Mapped[List["ThreatEvent"]] = relationship(
+        back_populates="camera_state",
+    )
+
 
 class SystemLog(Base):
     __tablename__ = "system_logs"
 
     log_id: Mapped[int] = mapped_column(Integer, primary_key=True)
     event_id: Mapped[Optional[int]] = mapped_column(
-        ForeignKey("threat_events.event_id", ondelete="SET NULL"),
+        ForeignKey(
+            "threat_events.event_id",
+            ondelete="SET NULL",
+        ),
         nullable=True,
         index=True,
     )

@@ -1,13 +1,44 @@
 import pytest
 
 
-def create_threat(client):
+def create_source(client):
+    response = client.post(
+        "/sources",
+        json={
+            "source_name": "Emergency Feed",
+            "source_type": "Emergency Broadcast",
+            "url": "https://example.com/emergency",
+            "reliability_score": 0.9,
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_camera_state(client, camera_id=1):
+    response = client.post(
+        "/camera-states",
+        json={
+            "camera_id": camera_id,
+            "mode": "Active",
+            "fps": 30,
+            "resolution": "1080p",
+        },
+    )
+    assert response.status_code == 201
+    return response.json()
+
+
+def create_threat(client, source_id=None, camera_id=1):
+    create_camera_state(client, camera_id=camera_id)
+
     response = client.post(
         "/threat-events",
         json={
+            "source_id": source_id,
             "object_class": "Firearm",
             "confidence_score": 0.92,
-            "camera_id": 1,
+            "camera_id": camera_id,
             "status": "Pending",
         },
     )
@@ -80,9 +111,11 @@ def test_source_reliability_must_be_between_zero_and_one(client, score):
 
 
 def test_create_and_get_threat_event(client):
-    threat = create_threat(client)
+    source = create_source(client)
+    threat = create_threat(client, source_id=source["source_id"])
 
     assert threat["event_id"] > 0
+    assert threat["source_id"] == source["source_id"]
     assert threat["object_class"] == "Firearm"
     assert threat["confidence_score"] == 0.92
     assert threat["camera_id"] == 1
@@ -93,6 +126,7 @@ def test_create_and_get_threat_event(client):
 
     assert get_response.status_code == 200
     assert len(get_response.json()) == 1
+    assert get_response.json()[0]["source_id"] == source["source_id"]
 
 
 @pytest.mark.parametrize("score", [-0.01, 1.01])
@@ -100,6 +134,7 @@ def test_threat_confidence_must_be_between_zero_and_one(client, score):
     response = client.post(
         "/threat-events",
         json={
+            "source_id": None,
             "object_class": "Edged Weapon",
             "confidence_score": score,
             "camera_id": 1,
@@ -114,6 +149,7 @@ def test_threat_event_requires_positive_camera_id(client):
     response = client.post(
         "/threat-events",
         json={
+            "source_id": None,
             "object_class": "Firearm",
             "confidence_score": 0.8,
             "camera_id": 0,
@@ -122,6 +158,40 @@ def test_threat_event_requires_positive_camera_id(client):
     )
 
     assert response.status_code == 422
+
+
+def test_threat_event_requires_existing_camera(client):
+    response = client.post(
+        "/threat-events",
+        json={
+            "source_id": None,
+            "object_class": "Firearm",
+            "confidence_score": 0.8,
+            "camera_id": 2147483647,
+            "status": "Pending",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "Camera state not found."
+
+
+def test_threat_event_rejects_missing_source(client):
+    create_camera_state(client)
+
+    response = client.post(
+        "/threat-events",
+        json={
+            "source_id": 2147483647,
+            "object_class": "Firearm",
+            "confidence_score": 0.8,
+            "camera_id": 1,
+            "status": "Pending",
+        },
+    )
+
+    assert response.status_code == 404
+    assert response.json()["detail"] == "OSINT source not found."
 
 
 def test_create_and_get_alert_log(client):
@@ -168,7 +238,25 @@ def test_alert_log_requires_existing_threat(client):
 
 
 def test_create_and_get_camera_state(client):
-    create_response = client.post(
+    camera_state = create_camera_state(client)
+
+    assert camera_state["state_id"] > 0
+    assert camera_state["camera_id"] == 1
+    assert camera_state["mode"] == "Active"
+    assert camera_state["fps"] == 30
+    assert camera_state["resolution"] == "1080p"
+    assert "timestamp" in camera_state
+
+    get_response = client.get("/camera-states")
+
+    assert get_response.status_code == 200
+    assert len(get_response.json()) == 1
+
+
+def test_duplicate_camera_id_returns_conflict(client):
+    create_camera_state(client)
+
+    response = client.post(
         "/camera-states",
         json={
             "camera_id": 1,
@@ -178,19 +266,11 @@ def test_create_and_get_camera_state(client):
         },
     )
 
-    assert create_response.status_code == 201
-
-    camera_state = create_response.json()
-    assert camera_state["state_id"] > 0
-    assert camera_state["camera_id"] == 1
-    assert camera_state["mode"] == "Dormant"
-    assert camera_state["fps"] == 5
-    assert "timestamp" in camera_state
-
-    get_response = client.get("/camera-states")
-
-    assert get_response.status_code == 200
-    assert len(get_response.json()) == 1
+    assert response.status_code == 409
+    assert (
+        response.json()["detail"]
+        == "A camera state with this camera ID already exists."
+    )
 
 
 @pytest.mark.parametrize("mode", ["Sleeping", "High Alert"])

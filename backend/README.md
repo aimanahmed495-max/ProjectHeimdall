@@ -136,12 +136,13 @@ Fields:
 
 ### `threat_events`
 
-Stores possible visual threat detections.
+Stores possible threat detections produced by camera or OSINT pipelines.
 
 Fields:
 
 - `event_id`
 - `timestamp`
+- `source_id` (optional)
 - `object_class`
 - `confidence_score`
 - `camera_id`
@@ -162,8 +163,7 @@ Fields:
 
 ### `camera_states`
 
-Stores camera operating-state history.
-
+Stores the current operating state of each registered camera. Each `camera_id` is unique.
 Fields:
 
 - `state_id`
@@ -190,13 +190,6 @@ Fields:
 `event_id` is optional because some system activity may not belong to a specific threat.
 
 More database details are available in `DATABASE_DESIGN.md`.
-
-## Relationships
-
-- One threat event can have multiple alert logs.
-- One threat event can have multiple system logs.
-- A system log can exist without a threat event.
-- Foreign keys prevent alert and event-related log records from referencing nonexistent threats.
 
 ## API endpoints
 
@@ -271,6 +264,18 @@ Valid prototype modes are `Dormant` and `Active`.
   "message": "OSINT polling started"
 }
 ```
+## Database relationships
+
+The five report tables are connected through the following relationships:
+
+- One OSINT source can contribute to many threat events.
+- `threat_events.source_id` is optional because camera detections may not originate from OSINT.
+- Deleting an OSINT source sets related threat-event `source_id` values to `NULL`.
+- One registered camera can produce many threat events.
+- Every threat event must reference an existing unique `camera_states.camera_id`.
+- A camera state cannot be deleted while threat events still reference it.
+- One threat event can produce many alert logs.
+- One threat event can be referenced by many optional system logs.
 
 ## Validation
 
@@ -284,6 +289,9 @@ Current examples include:
 - Camera mode must be `Dormant` or `Active`.
 - Required text fields cannot be empty.
 - Duplicate OSINT source names return a conflict response.
+- Duplicate camera IDs return a conflict response.
+- Threat events cannot reference missing cameras.
+- Threat events with a source ID cannot reference missing OSINT sources.
 - Alert logs cannot reference missing threat events.
 - System logs with an event ID cannot reference missing threat events.
 
@@ -309,10 +317,10 @@ Apply all migrations:
 (cd backend && alembic upgrade head)
 ```
 
-Roll back the report-alignment migration:
+Roll back the latest relationship migration:
 
 ```bash
-(cd backend && alembic downgrade 226eb47c96bb)
+(cd backend && alembic downgrade 017083aec8b1)
 ```
 
 Reapply it:
@@ -329,7 +337,6 @@ docker compose exec -T postgres pg_dump -U heimdall -d heimdall > backups/heimda
 ```
 
 Local database backups are ignored by Git.
-
 ## Seed sample data
 
 After migrations are applied, load fake demo rows for local development:
@@ -355,20 +362,23 @@ Run the tests from the repository root:
 python -m pytest backend/tests -v
 ```
 
-The current suite contains 18 tests covering:
+The current suite contains 22 tests covering:
 
 - Database-connected health checks
 - Creating and retrieving all five record types
 - Duplicate OSINT source handling
+- Duplicate camera ID handling
 - Reliability-score validation
 - Confidence-score validation
 - Camera ID, mode, and FPS validation
+- Threat-to-source and threat-to-camera relationships
+- Missing source and camera handling for threat events
 - Missing threat handling for alert logs
 - System logs with and without threat events
 - Missing threat handling for system logs
+- Seeder idempotency with existing unique camera IDs
 
 The tests use real PostgreSQL transactions and roll back their changes so local demo data is preserved.
-
 ## Stop local services
 
 Stop the API with `Control+C`.
