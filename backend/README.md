@@ -206,6 +206,8 @@ More database details are available in `DATABASE_DESIGN.md`.
 | `GET` | `/camera-states` | Retrieve camera-state records |
 | `POST` | `/system-logs` | Store a system-log record |
 | `GET` | `/system-logs` | Retrieve system logs |
+| `GET` | `/camera-states/{camera_id}` | Retrieve one registered camera state |
+| `PUT` | `/camera-states/{camera_id}` | Update a registered camera state |
 
 ## Example requests
 
@@ -362,7 +364,7 @@ Run the tests from the repository root:
 python -m pytest backend/tests -v
 ```
 
-The current suite contains 22 tests covering:
+The current suite contains 30 tests covering:
 
 - Database-connected health checks
 - Creating and retrieving all five record types
@@ -377,6 +379,9 @@ The current suite contains 22 tests covering:
 - System logs with and without threat events
 - Missing threat handling for system logs
 - Seeder idempotency with existing unique camera IDs
+- Retrieving and updating individual camera states
+- Missing-camera responses
+- Vision-client camera registration and update behavior
 
 The tests use real PostgreSQL transactions and roll back their changes so local demo data is preserved.
 ## Stop local services

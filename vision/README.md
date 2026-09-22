@@ -51,3 +51,9 @@ python main.py
 ```
 
 The process marks camera 1 as `Active`, prints each frame and detection, posts matching threat events and system logs, then marks the camera `Dormant`. If the backend is not running, it exits with a clear error instead of crashing.
+
+## Camera-state integration
+
+The vision pipeline registers a missing camera with `POST /camera-states`. After registration, it updates the same camera record through `PUT /camera-states/{camera_id}` when switching between `Active` and `Dormant`.
+
+Repeated pipeline runs update one existing camera row instead of creating duplicate camera-state records.
