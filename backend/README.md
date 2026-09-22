@@ -18,6 +18,19 @@ Prototype 1 demonstrates:
 
 Prototype 1 does not include real OSINT ingestion, camera control, YOLO, LangGraph, WebSockets, or frontend integration.
 
+## Prototype 2 authentication foundation
+
+The backend now includes a supporting authentication layer alongside the five report-domain tables.
+
+Authentication features include:
+
+- User registration with username and password validation
+- Argon2 password hashing
+- Signed JWT access tokens
+- Bearer-token validation
+- Active-account and soft-delete checks
+- Protected current-user retrieval
+
 ## Current data flow
 
 ```text
@@ -87,6 +100,10 @@ Create the local environment file:
 ```bash
 cp .env.example .env
 ```
+Generate a local JWT signing secret:
+
+```bash
+openssl rand -hex 32
 
 Start PostgreSQL:
 
@@ -191,6 +208,21 @@ Fields:
 
 More database details are available in `DATABASE_DESIGN.md`.
 
+### Supporting `users` table
+
+Stores authentication accounts separately from the five report-domain tables.
+
+Fields:
+
+- `user_id`
+- `username`
+- `password_hash`
+- `is_active`
+- `created_at`
+- `deleted_at`
+
+Passwords are stored only as Argon2 hashes. `deleted_at` supports soft deletion without destroying account records.
+
 ## API endpoints
 
 | Method | Endpoint | Purpose |
@@ -208,6 +240,9 @@ More database details are available in `DATABASE_DESIGN.md`.
 | `GET` | `/system-logs` | Retrieve system logs |
 | `GET` | `/camera-states/{camera_id}` | Retrieve one registered camera state |
 | `PUT` | `/camera-states/{camera_id}` | Update a registered camera state |
+| `POST` | `/auth/register` | Register a user with a hashed password |
+| `POST` | `/auth/login` | Validate credentials and return a JWT |
+| `GET` | `/auth/me` | Retrieve the authenticated user |
 
 ## Example requests
 
@@ -319,10 +354,12 @@ Apply all migrations:
 (cd backend && alembic upgrade head)
 ```
 
-Roll back the latest relationship migration:
+
+```markdown
+Roll back the latest authentication migration:
 
 ```bash
-(cd backend && alembic downgrade 017083aec8b1)
+(cd backend && alembic downgrade c61901464e7c)
 ```
 
 Reapply it:
@@ -363,8 +400,18 @@ Run the tests from the repository root:
 ```bash
 python -m pytest backend/tests -v
 ```
+Run the Prototype 2 coverage gate:
 
-The current suite contains 30 tests covering:
+```bash
+python -m pytest backend/tests \
+  --cov=backend.app \
+  --cov-report=term-missing \
+  --cov-fail-under=60
+```
+
+The current backend test suite contains 38 tests and reaches 97.42% coverage.
+
+The current suite contains 38 tests covering:
 
 - Database-connected health checks
 - Creating and retrieving all five record types
@@ -382,6 +429,12 @@ The current suite contains 30 tests covering:
 - Retrieving and updating individual camera states
 - Missing-camera responses
 - Vision-client camera registration and update behavior
+- User registration and duplicate-username handling
+- Argon2 password-hash storage
+- Login and JWT generation
+- Protected-route authentication
+- Invalid-token and inactive-user rejection
+- Minimum 60% backend coverage enforcement
 
 The tests use real PostgreSQL transactions and roll back their changes so local demo data is preserved.
 ## Stop local services

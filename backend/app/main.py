@@ -6,6 +6,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models, schemas
+from .auth import router as auth_router
 from .database import get_db
 
 
@@ -14,6 +15,7 @@ app = FastAPI(
     version="0.2.0",
     description="Prototype API following Heimdall's five-table report design.",
 )
+app.include_router(auth_router)
 
 
 @app.get("/health", tags=["Health"])
