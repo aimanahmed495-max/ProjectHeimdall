@@ -50,7 +50,14 @@ jobs:
           POSTGRES_HOST: localhost
           POSTGRES_PORT: "5432"
           PYTHONPATH: .
-        run: pytest backend/tests
+          JWT_SECRET_KEY: heimdall-ci-test-key-not-for-production-use-only
+          JWT_ALGORITHM: HS256
+          JWT_ACCESS_TOKEN_MINUTES: "30"
+        run: >
+          pytest backend/tests
+          --cov=backend.app
+          --cov-report=term-missing
+          --cov-fail-under=60
 
   frontend:
     runs-on: ubuntu-latest

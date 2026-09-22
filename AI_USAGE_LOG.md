@@ -318,3 +318,13 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Implemented camera-state retrieval and updates, connected the vision client, added tests, and updated documentation.
 
 **Verification:** All 30 backend tests passed, repeated vision runs completed successfully, and camera uniqueness was verified in PostgreSQL.
+
+## 2026-09-22 — Authentication Foundation
+
+**Developer:** Arham Sadid Hossain
+
+**AI assistance:** Reviewed authentication concepts and assisted with troubleshooting configuration and testing.
+
+**Human work completed:** Implemented the user model, password hashing, JWT authentication, migration, tests, Docker and CI configuration, and documentation.
+
+**Verification:** Migration upgrade and rollback succeeded, all 38 backend tests passed, backend coverage reached 97.42%, and live testing confirmed that passwords were stored as Argon2 hashes.
