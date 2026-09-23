@@ -100,10 +100,23 @@ Create the local environment file:
 ```bash
 cp .env.example .env
 ```
+
 Generate a local JWT signing secret:
 
 ```bash
 openssl rand -hex 32
+```
+
+Add the generated value and authentication settings to the private `.env` file:
+
+```text
+JWT_SECRET_KEY=replace_with_generated_secret
+JWT_ALGORITHM=HS256
+JWT_ACCESS_TOKEN_MINUTES=30
+ENABLE_USER_REGISTRATION=true
+```
+
+Set `ENABLE_USER_REGISTRATION=false` after the required accounts have been created to disable public registration.
 
 Start PostgreSQL:
 
@@ -225,24 +238,25 @@ Passwords are stored only as Argon2 hashes. `deleted_at` supports soft deletion 
 
 ## API endpoints
 
-| Method | Endpoint | Purpose |
-|---|---|---|
-| `GET` | `/health` | Verify the API and PostgreSQL connection |
-| `POST` | `/sources` | Store an OSINT source |
-| `GET` | `/sources` | Retrieve OSINT sources |
-| `POST` | `/threat-events` | Store a threat event |
-| `GET` | `/threat-events` | Retrieve threat events |
-| `POST` | `/alert-logs` | Store an alert for a threat |
-| `GET` | `/alert-logs` | Retrieve alert logs |
-| `POST` | `/camera-states` | Store a camera-state record |
-| `GET` | `/camera-states` | Retrieve camera-state records |
-| `POST` | `/system-logs` | Store a system-log record |
-| `GET` | `/system-logs` | Retrieve system logs |
-| `GET` | `/camera-states/{camera_id}` | Retrieve one registered camera state |
-| `PUT` | `/camera-states/{camera_id}` | Update a registered camera state |
-| `POST` | `/auth/register` | Register a user with a hashed password |
-| `POST` | `/auth/login` | Validate credentials and return a JWT |
-| `GET` | `/auth/me` | Retrieve the authenticated user |
+| Method | Endpoint | Access | Purpose |
+|---|---|---|---|
+| `GET` | `/health` | Public | Verify the API and PostgreSQL connection |
+| `POST` | `/sources` | Bearer token | Store an OSINT source |
+| `GET` | `/sources` | Public | Retrieve OSINT sources |
+| `POST` | `/threat-events` | Bearer token | Store a threat event |
+| `GET` | `/threat-events` | Public | Retrieve threat events |
+| `POST` | `/alert-logs` | Bearer token | Store an alert for a threat |
+| `GET` | `/alert-logs` | Public | Retrieve alert logs |
+| `POST` | `/camera-states` | Bearer token | Register a camera state |
+| `GET` | `/camera-states` | Public | Retrieve camera states |
+| `GET` | `/camera-states/{camera_id}` | Public | Retrieve one registered camera state |
+| `PUT` | `/camera-states/{camera_id}` | Bearer token | Update a registered camera state |
+| `POST` | `/system-logs` | Bearer token | Store a system log |
+| `GET` | `/system-logs` | Public | Retrieve system logs |
+| `POST` | `/auth/register` | Public when enabled | Register a user with a hashed password |
+| `POST` | `/auth/login` | Public | Validate credentials and return a JWT |
+| `GET` | `/auth/me` | Bearer token | Retrieve the authenticated user |
+Protected requests must include an `Authorization: Bearer <access_token>` header. Missing, malformed, expired, or invalid tokens return HTTP 401.
 
 ## Example requests
 
@@ -409,9 +423,9 @@ python -m pytest backend/tests \
   --cov-fail-under=60
 ```
 
-The current backend test suite contains 38 tests and reaches 97.42% coverage.
+The current backend test suite contains 48 tests and reaches 97.45% coverage.
 
-The current suite contains 38 tests covering:
+The current suite contains 48 tests covering:
 
 - Database-connected health checks
 - Creating and retrieving all five record types

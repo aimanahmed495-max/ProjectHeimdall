@@ -1,5 +1,6 @@
 """Authentication routes and current-user dependency."""
 
+import os
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
@@ -25,6 +26,15 @@ router = APIRouter(
 )
 
 bearer_scheme = HTTPBearer(auto_error=False)
+
+
+def user_registration_enabled() -> bool:
+    """Return whether public user registration is enabled."""
+
+    return os.getenv(
+        "ENABLE_USER_REGISTRATION",
+        "true",
+    ).lower() in {"1", "true", "yes", "on"}
 
 
 def authentication_error() -> HTTPException:
@@ -76,6 +86,12 @@ def register_user(
     db: Session = Depends(get_db),
 ):
     """Create an active user with an Argon2 password hash."""
+
+    if not user_registration_enabled():
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User registration is disabled.",
+        )
 
     user = models.User(
         username=user_data.username.lower(),

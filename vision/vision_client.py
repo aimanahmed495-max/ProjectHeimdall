@@ -29,6 +29,8 @@ class HeimdallVisionClient:
         self,
         base_url: Optional[str] = None,
         timeout: float = 10.0,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
     ) -> None:
         """Create a client pointed at the Heimdall Core API.
 
@@ -41,6 +43,8 @@ class HeimdallVisionClient:
         resolved = base_url or os.getenv("BASE_URL", "http://localhost:8000")
         self._base_url = resolved.rstrip("/")
         self._timeout = timeout
+        self._username = username or os.getenv("VISION_API_USERNAME")
+        self._password = password or os.getenv("VISION_API_PASSWORD")
         self._session = requests.Session()
         self._session.headers.update(
             {
@@ -54,6 +58,33 @@ class HeimdallVisionClient:
         """Return the API origin this client is using."""
 
         return self._base_url
+
+    def authenticate(self) -> None:
+        """Log in and attach a bearer token to future API requests."""
+
+        if not self._username or not self._password:
+            raise HeimdallAPIError(
+                "Vision API credentials are missing. Set "
+                "VISION_API_USERNAME and VISION_API_PASSWORD."
+            )
+
+        response = self._request(
+            "POST",
+            "/auth/login",
+            json_body={
+                "username": self._username,
+                "password": self._password,
+            },
+        )
+        self._ensure_success(response, expected_status=200)
+
+        token = response.json().get("access_token")
+        if not token:
+            raise HeimdallAPIError(
+                "Heimdall authentication response did not include an access token."
+            )
+
+        self._session.headers.update({"Authorization": f"Bearer {token}"})
 
     def post_camera_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
         """Create a camera-state record with ``POST /camera-states``.

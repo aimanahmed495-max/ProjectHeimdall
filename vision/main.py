@@ -71,6 +71,9 @@ class VisionPipelineApp:
 
         active_state: Optional[Dict[str, Any]] = None
         try:
+            self._client.authenticate()
+            print("Authentication: successful")
+            print()
             active_state = self._set_camera_mode("Active")
             self._print_camera_state(active_state)
             print()
@@ -134,10 +137,7 @@ class VisionPipelineApp:
                 continue
 
             for object_class, confidence in detections:
-                print(
-                    f"   Detection: {object_class} "
-                    f"(confidence {confidence:.2f})"
-                )
+                print(f"   Detection: {object_class} (confidence {confidence:.2f})")
                 try:
                     threat_event, system_log = self._post_detection(
                         object_class,
