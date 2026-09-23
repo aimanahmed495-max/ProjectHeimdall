@@ -432,9 +432,338 @@
   ::-webkit-scrollbar{width:9px;height:9px}
   ::-webkit-scrollbar-thumb{background:#2f3242;border-radius:5px;border:2px solid #171929}
   ::-webkit-scrollbar-track{background:transparent}
+
+/* ---------- Authentication page ---------- */
+
+body.auth-locked > .navrail,
+body.auth-locked > #app {
+  visibility: hidden;
+}
+
+.auth-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  grid-template-columns: minmax(300px, 1.15fr) minmax(380px, .85fr);
+  overflow-y: auto;
+  color: var(--color-text, #e9e9ed);
+  background:
+    radial-gradient(
+      circle at 18% 25%,
+      rgba(155, 135, 220, .12),
+      transparent 34%
+    ),
+    #12141f;
+}
+
+.auth-gate[hidden] {
+  display: none;
+}
+
+/* Branding panel */
+
+.auth-visual {
+  padding: clamp(40px, 7vw, 96px);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 48px;
+  border-right: 1px solid var(--line);
+  background-image:
+    linear-gradient(
+      rgba(125, 130, 160, .08) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      90deg,
+      rgba(125, 130, 160, .08) 1px,
+      transparent 1px
+    );
+  background-size: 52px 52px;
+}
+
+.auth-wordmark {
+  font-family: var(--font-heading, "Inter", sans-serif);
+  font-size: 19px;
+  font-weight: 500;
+  letter-spacing: .18em;
+}
+
+.auth-wordmark span {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-right: 12px;
+  border: 1px solid var(--color-accent);
+  border-radius: 9px;
+  color: var(--color-accent);
+}
+
+.auth-copy {
+  max-width: 620px;
+}
+
+.auth-copy .kick {
+  margin-bottom: 20px;
+}
+
+.auth-copy h1 {
+  margin: 0 0 18px;
+  font-size: clamp(38px, 5vw, 72px);
+  line-height: 1.05;
+  font-weight: 500;
+  letter-spacing: -.04em;
+}
+
+.auth-copy p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--color-neutral-400);
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.auth-security {
+  display: flex;
+  gap: 18px;
+  flex-wrap: wrap;
+  font-family: var(--mono);
+  font-size: 10px;
+  line-height: 1.6;
+  letter-spacing: .09em;
+  color: var(--color-neutral-500);
+}
+
+/* Login form panel */
+
+.auth-panel {
+  display: grid;
+  place-items: center;
+  padding: 32px;
+}
+
+.auth-card {
+  width: min(420px, 100%);
+  padding: 32px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 12px);
+  background: rgba(27, 29, 44, .96);
+  box-shadow: 0 24px 64px rgba(0, 0, 0, .28);
+}
+
+.auth-card h2 {
+  margin: 9px 0 8px;
+  font-size: 25px;
+  font-weight: 500;
+  letter-spacing: -.02em;
+}
+
+.auth-description {
+  margin: 0 0 25px;
+  color: var(--color-neutral-400);
+  font-size: 12.5px;
+  line-height: 1.6;
+}
+
+.auth-field {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 16px;
+}
+
+.auth-field label {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .12em;
+  color: var(--color-neutral-400);
+}
+
+.auth-field .input {
+  width: 100%;
+  min-height: 44px;
+  padding: 11px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm, 6px);
+  background: #12141f;
+  color: var(--color-text, #e9e9ed);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.auth-field .input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.auth-actions {
+  display: grid;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.auth-actions .btn {
+  width: 100%;
+  min-height: 44px;
+}
+
+.auth-actions .btn:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 3px;
+}
+
+.auth-actions .btn:disabled {
+  opacity: .6;
+  cursor: wait;
+}
+
+.auth-message {
+  min-height: 20px;
+  margin-top: 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.6;
+  overflow-wrap: anywhere;
+  color: var(--color-neutral-400);
+}
+
+.auth-message[data-type="error"] {
+  color: var(--sev-3);
+}
+
+.auth-message[data-type="success"] {
+  color: var(--mode-normal);
+}
+
+/* Smaller screens */
+
+@media (max-width: 800px) {
+  .auth-gate {
+    grid-template-columns: 1fr;
+  }
+
+  .auth-visual {
+    display: none;
+  }
+
+  .auth-panel {
+    min-height: 100%;
+    padding: 24px;
+  }
+}
+
+@media (max-width: 420px) {
+  .auth-panel {
+    padding: 16px;
+  }
+
+  .auth-card {
+    padding: 24px;
+  }
+}
 </style>
 </head>
-<body>
+<body class="auth-locked">
+<section class="auth-gate" id="authGate" aria-labelledby="authTitle">
+  <div class="auth-visual">
+    <div class="auth-wordmark">
+      <span>H</span> HEIMDALL
+    </div>
+
+    <div class="auth-copy">
+      <div class="kick">OPERATIONS CONSOLE</div>
+
+      <h1>See the signal.<br>Control the response.</h1>
+
+      <p>
+        Sign in to your Heimdall workspace for intelligence,
+        camera-state monitoring, and analyst triage.
+      </p>
+    </div>
+
+    <div class="auth-security">
+      <span>ARGON2 PASSWORD HASHING</span>
+      <span>JWT AUTHENTICATION</span>
+      <span>EXPIRING ACCESS TOKENS</span>
+    </div>
+  </div>
+
+  <div class="auth-panel">
+    <div class="auth-card">
+      <div class="kick">OPERATOR AUTHENTICATION</div>
+
+      <h2 id="authTitle">Access Heimdall</h2>
+
+      <p class="auth-description">
+        Sign in with your operator account.
+        New prototype accounts require a password of at least
+        12 characters.
+      </p>
+
+      <form id="loginForm">
+        <div class="auth-field">
+          <label for="authUsername">USERNAME</label>
+          <input
+            class="input"
+            id="authUsername"
+            name="username"
+            type="text"
+            autocomplete="username"
+            autocapitalize="none"
+            spellcheck="false"
+            maxlength="100"
+            placeholder="Your username"
+            required
+          >
+        </div>
+
+        <div class="auth-field">
+          <label for="authPassword">PASSWORD</label>
+          <input
+            class="input"
+            id="authPassword"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            maxlength="128"
+            placeholder="Your password"
+            required
+          >
+        </div>
+
+        <div class="auth-actions">
+          <button
+            class="btn btn-primary"
+            id="loginButton"
+            type="submit"
+            disabled
+          >
+            Authenticate
+          </button>
+
+          <button
+            class="btn btn-secondary"
+            id="registerButton"
+            type="button"
+            disabled
+          >
+            Create prototype account
+          </button>
+        </div>
+
+        <div
+          class="auth-message"
+          id="authMessage"
+          role="status"
+          aria-live="polite"
+        >
+          Authentication connection is being configured.
+        </div>
+      </form>
+    </div>
+  </div>
+</section>
 <nav class="navrail">
   <div class="mark">H</div>
   <button class="nb" data-view="ops" aria-pressed="true"><svg viewBox="0 0 24 24"><path d="M3 7l6-3 6 3 6-3v13l-6 3-6-3-6 3z"/><path d="M9 4v13M15 7v13"/></svg><span class="tip">OPERATIONS MAP</span></button>
@@ -453,6 +782,9 @@
     <span class="kick" id="clock">—</span>
     <div class="divider-v"></div>
     <div class="counts">
+      <button class="btn btn-ghost btn-xs" id="logoutButton" type="button">
+  Sign out
+</button>
       <div class="pop-wrap">
         <button class="btn btn-ghost btn-xs" id="sysBtn">System <span class="mono" id="sysDot" style="font-size:9px">●</span></button>
         <div class="pop" id="sysPop" hidden>
@@ -785,6 +1117,74 @@ const state = {
 const API_BASE = '__HEIMDALL_API_URL__';
 const WS_URL = '__HEIMDALL_WS_URL__';
 const backend = {connected:false, mode:null, retry:null};
+
+/* Authentication helpers */
+const authState = {
+  token: null,
+  user: null,
+  busy: false
+};
+
+function setAuthMessage(message, type = '') {
+  const element = document.getElementById('authMessage');
+  element.textContent = message;
+  element.classList.remove('error', 'success');
+  if (type) element.classList.add(type);
+}
+
+function setAuthBusy(busy) {
+  authState.busy = busy;
+  document.getElementById('loginButton').disabled = busy;
+  document.getElementById('registerButton').disabled = busy;
+}
+
+async function authRequest(path, options = {}) {
+  const headers = new Headers(options.headers || {});
+
+  if (options.body) {
+    headers.set('Content-Type', 'application/json');
+  }
+
+  if (authState.token) {
+    headers.set('Authorization', `Bearer ${authState.token}`);
+  }
+
+  let response;
+
+  try {
+    response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}${path}`,
+      {
+        ...options,
+        headers,
+        cache: 'no-store'
+      }
+    );
+  } catch {
+    throw new Error(
+      'Cannot reach the authentication service. Check the backend connection.'
+    );
+  }
+
+  const data = await response.json().catch(() => null);
+
+  if (!response.ok) {
+    const messages = {
+      401: 'Invalid credentials or expired session. Please sign in again.',
+      403: 'You do not have permission to perform this action.',
+      409: 'That username is already taken.',
+      422: 'Check your username and password requirements.',
+      429: 'Too many attempts. Please try again later.'
+    };
+
+    throw new Error(
+      messages[response.status] ||
+      'Authentication service error. Please try again.'
+    );
+  }
+
+  return data;
+}
 
 const LOCATION_COORDS = {
   'East Entrance':[37.6872,-97.3301],
@@ -1540,11 +1940,147 @@ $('#camGrid').addEventListener('click', e => {
 });
 $('#camAll').onclick = () => { cams.forEach(c=>c.on=true); toast('All published feeds resumed'); render(); };
 
-logEvent('engine','Heimdall started — 5 open crime-data streams connected, 5 public cameras at 1 FPS low power');
-setWin(180); fillOps(); renderViews(); render(); setView('ops');
-$('#clock').textContent = new Date().toLocaleTimeString('en-US') + ' CT';
-loadBackend();
-connectWebSocket();
+/* Start the dashboard once, after successful authentication. */
+let dashboardStarted = false;
+
+function startAuthenticatedDashboard() {
+  document.getElementById('authGate').hidden = true;
+  document.body.classList.remove('auth-locked');
+
+  if (!dashboardStarted) {
+    dashboardStarted = true;
+
+    setWin(180);
+    fillOps();
+    renderViews();
+    render();
+    setView('ops');
+
+    document.getElementById('clock').textContent =
+      new Date().toLocaleTimeString('en-US');
+
+    logEvent(
+      'system',
+      'Signed in successfully. Prototype dashboard opened.',
+      1
+    );
+  }
+
+  window.dispatchEvent(new Event('resize'));
+}
+
+/* Authenticate using the backend, then verify the token. */
+const loginForm = document.getElementById('loginForm');
+
+loginForm.addEventListener('submit', async (event) => {
+  event.preventDefault();
+
+  if (authState.busy || !loginForm.reportValidity()) return;
+
+  setAuthBusy(true);
+  setAuthMessage('Signing in…');
+
+  try {
+    authState.token = null;
+    authState.user = null;
+
+    const result = await authRequest('/auth/login', {
+      method: 'POST',
+      body: JSON.stringify({
+        username: document.getElementById('authUsername').value.trim(),
+        password: document.getElementById('authPassword').value
+      })
+    });
+
+    if (!result || typeof result.access_token !== 'string' ||
+        !result.access_token) {
+      throw new Error('The server did not return an access token.');
+    }
+
+    authState.token = result.access_token;
+
+    const user = await authRequest('/auth/me');
+
+    if (!user || !user.is_active) {
+      throw new Error('An active operator account is required.');
+    }
+
+    authState.user = user;
+  } catch (error) {
+    authState.token = null;
+    authState.user = null;
+    setAuthMessage(error.message, 'error');
+  } finally {
+    document.getElementById('authPassword').value = '';
+    setAuthBusy(false);
+  }
+
+  if (authState.user) {
+    setAuthMessage('Signed in successfully.', 'success');
+    startAuthenticatedDashboard();
+  }
+});
+
+/* Register a prototype account; signing in is a separate step. */
+document.getElementById('registerButton')
+  .addEventListener('click', async () => {
+    if (authState.busy || !loginForm.reportValidity()) return;
+
+    const username =
+      document.getElementById('authUsername').value.trim();
+    const password =
+      document.getElementById('authPassword').value;
+
+    if (!/^[A-Za-z0-9_.-]{3,100}$/.test(username)) {
+      setAuthMessage(
+        'Use 3–100 characters: letters, numbers, dots, underscores or hyphens.',
+        'error'
+      );
+      return;
+    }
+
+    if (password.length < 12 || password.length > 128) {
+      setAuthMessage('Use a password of 12–128 characters.', 'error');
+      return;
+    }
+
+    setAuthBusy(true);
+    setAuthMessage('Creating your account…');
+
+    try {
+      await authRequest('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({ username, password })
+      });
+
+      setAuthMessage(
+        'Account created. Enter your password again and click Authenticate.',
+        'success'
+      );
+    } catch (error) {
+      setAuthMessage(error.message, 'error');
+    } finally {
+      document.getElementById('authPassword').value = '';
+      setAuthBusy(false);
+    }
+  });
+
+/* Enable the buttons only after their handlers are attached. */
+document.getElementById('logoutButton')
+  .addEventListener('click', () => {
+    authState.token = null;
+    authState.user = null;
+
+    document.body.classList.add('auth-locked');
+    document.getElementById('authGate').hidden = false;
+    document.getElementById('loginForm').reset();
+
+    setAuthMessage('Signed out successfully.', 'success');
+    document.getElementById('authUsername').focus();
+  });
+
+setAuthMessage('Enter your operator credentials.');
+setAuthBusy(false);
 })();
 </script>
 </body>
