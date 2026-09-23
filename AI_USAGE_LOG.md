@@ -328,3 +328,14 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Implemented the user model, password hashing, JWT authentication, migration, tests, Docker and CI configuration, and documentation.
 
 **Verification:** Migration upgrade and rollback succeeded, all 38 backend tests passed, backend coverage reached 97.42%, and live testing confirmed that passwords were stored as Argon2 hashes.
+
+
+## 2026-09-23 — Protected API Integration
+
+**Developer:** Arham Sadid Hossain
+
+**AI assistance:** Reviewed protected-route design, vision-client authentication, registration controls, automated tests, and documentation updates.
+
+**Human work completed:** Protected all write endpoints with JWT bearer authentication, kept read and health endpoints public, connected the vision pipeline to authenticated API requests, added a registration feature flag, expanded API and client tests, and updated backend and vision documentation.
+
+**Verification:** All 48 backend tests passed, backend coverage reached 97.45%, Ruff checks passed, Alembic detected no pending schema changes, Docker Compose configuration validated, and the authenticated vision pipeline completed successfully with camera state transitions and protected event posting.

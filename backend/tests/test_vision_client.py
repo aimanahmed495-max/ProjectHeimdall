@@ -127,3 +127,61 @@ def test_set_camera_state_rejects_unexpected_lookup_error():
                 "resolution": "720p",
             }
         )
+
+
+def test_authenticate_adds_bearer_token():
+    client = HeimdallVisionClient(
+        username="vision.operator",
+        password="SecureVisionPassword123!",
+    )
+    response = make_response(
+        200,
+        {
+            "access_token": "signed-token",
+            "token_type": "bearer",
+        },
+    )
+    client._request = Mock(return_value=response)
+
+    client.authenticate()
+
+    client._request.assert_called_once_with(
+        "POST",
+        "/auth/login",
+        json_body={
+            "username": "vision.operator",
+            "password": "SecureVisionPassword123!",
+        },
+    )
+    assert client._session.headers["Authorization"] == "Bearer signed-token"
+
+
+def test_authenticate_requires_credentials(monkeypatch):
+    monkeypatch.delenv("VISION_API_USERNAME", raising=False)
+    monkeypatch.delenv("VISION_API_PASSWORD", raising=False)
+
+    client = HeimdallVisionClient()
+
+    with pytest.raises(
+        HeimdallAPIError,
+        match="credentials are missing",
+    ):
+        client.authenticate()
+
+
+def test_authenticate_requires_access_token():
+    client = HeimdallVisionClient(
+        username="vision.operator",
+        password="SecureVisionPassword123!",
+    )
+    response = make_response(
+        200,
+        {"token_type": "bearer"},
+    )
+    client._request = Mock(return_value=response)
+
+    with pytest.raises(
+        HeimdallAPIError,
+        match="did not include an access token",
+    ):
+        client.authenticate()

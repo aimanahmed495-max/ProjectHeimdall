@@ -7,7 +7,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .auth import router as auth_router
+from .auth import get_current_user, router as auth_router
 from .database import get_db
 
 
@@ -45,6 +45,7 @@ def health_check(db: Session = Depends(get_db)):
     response_model=schemas.OsintSourceRead,
     status_code=status.HTTP_201_CREATED,
     tags=["OSINT Sources"],
+    dependencies=[Depends(get_current_user)],
 )
 def create_source(
     source_data: schemas.OsintSourceCreate,
@@ -81,6 +82,7 @@ def get_sources(db: Session = Depends(get_db)):
     response_model=schemas.ThreatEventRead,
     status_code=status.HTTP_201_CREATED,
     tags=["Threat Events"],
+    dependencies=[Depends(get_current_user)],
 )
 def create_threat_event(
     threat_data: schemas.ThreatEventCreate,
@@ -133,6 +135,7 @@ def get_threat_events(db: Session = Depends(get_db)):
     response_model=schemas.AlertLogRead,
     status_code=status.HTTP_201_CREATED,
     tags=["Alert Logs"],
+    dependencies=[Depends(get_current_user)],
 )
 def create_alert_log(
     alert_data: schemas.AlertLogCreate,
@@ -172,6 +175,7 @@ def get_alert_logs(db: Session = Depends(get_db)):
     response_model=schemas.CameraStateRead,
     status_code=status.HTTP_201_CREATED,
     tags=["Camera States"],
+    dependencies=[Depends(get_current_user)],
 )
 def create_camera_state(
     camera_data: schemas.CameraStateCreate,
@@ -232,6 +236,7 @@ def get_camera_state(
     "/camera-states/{camera_id}",
     response_model=schemas.CameraStateRead,
     tags=["Camera States"],
+    dependencies=[Depends(get_current_user)],
 )
 def update_camera_state(
     camera_id: int,
@@ -264,6 +269,7 @@ def update_camera_state(
     response_model=schemas.SystemLogRead,
     status_code=status.HTTP_201_CREATED,
     tags=["System Logs"],
+    dependencies=[Depends(get_current_user)],
 )
 def create_system_log(
     log_data: schemas.SystemLogCreate,
