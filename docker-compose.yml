@@ -46,7 +46,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     environment:
-      HEIMDALL_API_URL: http://api:8000
+      HEIMDALL_API_URL: http://localhost:8000
     ports:
       - "8501:8501"
     depends_on:
