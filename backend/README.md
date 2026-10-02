@@ -4,19 +4,18 @@ Prototype FastAPI and PostgreSQL backend for receiving, validating, storing, and
 
 The database follows the five-table design from the May 2026 final report.
 
-## Prototype 1 scope
+## Prototype 2 scope
 
-Prototype 1 demonstrates:
+Prototype 2 integrates:
 
-- PostgreSQL running through Docker
-- Five database tables
-- Alembic migrations and rollback
-- FastAPI endpoints
-- JSON validation
-- Automated API tests
-- Interactive Swagger documentation
-
-Prototype 1 does not include real OSINT ingestion, camera control, YOLO, LangGraph, WebSockets, or frontend integration.
+- PostgreSQL through Docker
+- Normalized tables connected through foreign keys and constraints
+- FastAPI endpoints with request validation
+- Argon2 password hashing and JWT authentication
+- Authenticated vision and OSINT pipelines
+- Camera-state tracking and threat-event ingestion
+- Frontend authentication and dashboard access
+- Alembic migrations, rollback, and automated tests
 
 ## Prototype 2 authentication foundation
 
@@ -41,7 +40,7 @@ A system module sends JSON to an API endpoint
 → a GET endpoint returns the stored data as JSON
 ```
 
-For Prototype 1, requests are submitted manually through Swagger or automated tests. Future modules will send the same requests automatically.
+Requests may be submitted manually through Swagger, through automated tests, or automatically by the authenticated vision and OSINT pipelines.
 
 ## Requirements
 
@@ -146,7 +145,7 @@ http://127.0.0.1:8000/docs
 
 The final report proposed SQLite for local prototyping and PostgreSQL for the complete system.
 
-Prototype 1 uses PostgreSQL locally through Docker. This keeps development closer to the intended final database and allows PostgreSQL constraints, foreign keys, and migrations to be tested early.
+Prototype 2 continues using PostgreSQL locally through Docker. This keeps development closer to the intended final database and allows PostgreSQL constraints, foreign keys, and migrations to be tested early.
 
 Docker provides an isolated environment in which PostgreSQL runs. Docker is not the database itself.
 
@@ -175,7 +174,7 @@ Fields:
 - `source_id` (optional)
 - `object_class`
 - `confidence_score`
-- `camera_id`
+- `camera_id` (optional)
 - `status`
 
 ### `alert_logs`
@@ -203,7 +202,7 @@ Fields:
 - `resolution`
 - `timestamp`
 
-These are database records only. Prototype 1 does not control physical cameras.
+These records track the current operating state of registered cameras. The vision pipeline updates them between `Active` and `Dormant`; physical camera control remains outside the current prototype scope.
 
 ### `system_logs`
 
@@ -315,18 +314,22 @@ Valid prototype modes are `Dormant` and `Active`.
   "message": "OSINT polling started"
 }
 ```
+
 ## Database relationships
 
-The five report tables are connected through the following relationships:
+The five report-domain tables are connected through the following relationships:
 
 - One OSINT source can contribute to many threat events.
-- `threat_events.source_id` is optional because camera detections may not originate from OSINT.
-- Deleting an OSINT source sets related threat-event `source_id` values to `NULL`.
 - One registered camera can produce many threat events.
-- Every threat event must reference an existing unique `camera_states.camera_id`.
-- A camera state cannot be deleted while threat events still reference it.
+- Every threat event must reference an OSINT source, a camera, or both.
+- OSINT-only events store a `source_id` and leave `camera_id` as `NULL`.
+- Vision-only events store a `camera_id` and leave `source_id` as `NULL`.
+- Threat events may reference both origins when OSINT and camera evidence are correlated.
+- Referenced OSINT sources and cameras cannot be deleted while threat events depend on them.
 - One threat event can produce many alert logs.
+- Alert logs prevent deletion of their referenced threat event so alert evidence is not silently lost.
 - One threat event can be referenced by many optional system logs.
+- If a referenced threat event is deleted, related system logs remain and their `event_id` becomes `NULL`.
 
 ## Validation
 
@@ -341,7 +344,8 @@ Current examples include:
 - Required text fields cannot be empty.
 - Duplicate OSINT source names return a conflict response.
 - Duplicate camera IDs return a conflict response.
-- Threat events cannot reference missing cameras.
+- Every threat event requires a source ID, a camera ID, or both.
+- Threat events with a camera ID cannot reference missing cameras.
 - Threat events with a source ID cannot reference missing OSINT sources.
 - Alert logs cannot reference missing threat events.
 - System logs with an event ID cannot reference missing threat events.

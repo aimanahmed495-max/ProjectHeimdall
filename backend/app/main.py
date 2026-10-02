@@ -30,6 +30,7 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type"],
 )
 
+
 @app.get("/health", tags=["Health"])
 def health_check(db: Session = Depends(get_db)):
     db.execute(text("SELECT 1"))
@@ -97,17 +98,18 @@ def create_threat_event(
                 detail="OSINT source not found.",
             )
 
-    camera_state = db.scalar(
-        select(models.CameraState).where(
-            models.CameraState.camera_id == threat_data.camera_id
+    if threat_data.camera_id is not None:
+        camera_state = db.scalar(
+            select(models.CameraState).where(
+                models.CameraState.camera_id == threat_data.camera_id
+            )
         )
-    )
 
-    if camera_state is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Camera state not found.",
-        )
+        if camera_state is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Camera state not found.",
+            )
 
     threat_event = models.ThreatEvent(**threat_data.model_dump())
 

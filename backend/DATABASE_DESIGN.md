@@ -1,24 +1,44 @@
 # Heimdall Database Design
 
-## Prototype 1 scope
+## Prototype 2 scope
 
-Prototype 1 uses PostgreSQL for the API and database demonstration. The database follows the five-table design from the May 2026 final report.
+Prototype 2 uses PostgreSQL as the shared database for the FastAPI backend, authenticated vision pipeline, OSINT ingestion pipeline, and frontend integration.
 
-Camera hardware, YOLO detection, real OSINT ingestion, and frontend integration are outside the Prototype 1 scope.
+The schema keeps source details, camera state, threat detections, alerts, technical logs, and user accounts in separate tables connected through foreign keys.
 
 ## Entity relationship diagram
 
 ```mermaid
 erDiagram
+    OSINT_SOURCES o|--o{ THREAT_EVENTS : contributes
+    CAMERA_STATES o|--o{ THREAT_EVENTS : produces
     THREAT_EVENTS ||--o{ ALERT_LOGS : produces
     THREAT_EVENTS o|--o{ SYSTEM_LOGS : references
+
+    OSINT_SOURCES {
+        int source_id PK
+        string source_name UK
+        string source_type
+        string url
+        float reliability_score
+    }
+
+    CAMERA_STATES {
+        int state_id PK
+        int camera_id UK
+        string mode
+        int fps
+        string resolution
+        datetime timestamp
+    }
 
     THREAT_EVENTS {
         int event_id PK
         datetime timestamp
+        int source_id FK
         string object_class
         float confidence_score
-        int camera_id
+        int camera_id FK
         string status
     }
 
@@ -29,23 +49,6 @@ erDiagram
         string alert_level
         string message
         boolean acknowledged
-    }
-
-    OSINT_SOURCES {
-        int source_id PK
-        string source_name
-        string source_type
-        string url
-        float reliability_score
-    }
-
-    CAMERA_STATES {
-        int state_id PK
-        int camera_id
-        string mode
-        int fps
-        string resolution
-        datetime timestamp
     }
 
     SYSTEM_LOGS {
@@ -61,54 +64,65 @@ erDiagram
 
 ### `osint_sources`
 
-Stores information about approved public information sources.
-
-Examples include public APIs, RSS feeds, and emergency broadcasts.
-
-### `threat_events`
-
-Stores possible threat detections, including the detected object, confidence score, camera, time, and review status.
-
-### `alert_logs`
-
-Stores alert records connected to threat events. It tracks the alert level, message, time, and whether the alert was acknowledged.
+Stores approved OSINT source details once, including the source name, type, URL, and reliability score.
 
 ### `camera_states`
 
-Stores camera operating-state records, including dormant or active mode, frame rate, resolution, and timestamp.
+Stores one current operating-state row for each registered camera. The unique `camera_id` prevents duplicate current-state records. Repeated vision runs update the existing row instead of creating camera-state history.
 
-The table is included because it is part of the report design, although real camera control is not implemented in Prototype 1.
+### `threat_events`
+
+Stores possible threat detections from OSINT, vision, or both. It acts as the central event table but stores foreign-key references instead of copying source or camera details.
+
+Every threat event must have at least one origin:
+
+- OSINT-only: `source_id` is set and `camera_id` is `NULL`.
+- Vision-only: `camera_id` is set and `source_id` is `NULL`.
+- Correlated evidence: both IDs may be set.
+
+### `alert_logs`
+
+Stores alerts generated for threat events, including severity, message, timestamp, and acknowledgement status.
 
 ### `system_logs`
 
-Stores important messages produced by system modules. A log may optionally reference a threat event.
+Stores technical activity produced by system modules. A system log may optionally reference a threat event.
 
-## Relationships
+### `users`
 
-- One threat event may have multiple alert logs.
-- One threat event may have multiple system logs.
-- A system log may exist without a threat event.
-- OSINT sources and camera states are currently independent because the report does not define foreign-key relationships for them.
+Stores authentication accounts separately from the report-domain tables. Passwords are stored as Argon2 hashes rather than plaintext.
 
-## Normalization
+## Relationships and deletion behavior
 
-The schema separates different types of information into different tables:
+- One OSINT source may contribute to many threat events.
+- One registered camera may produce many threat events.
+- One threat event may produce many alert logs.
+- One threat event may be referenced by many system logs.
+- Referenced sources and cameras use `ON DELETE RESTRICT`.
+- Alert-to-event references use `ON DELETE RESTRICT` so deleting an event cannot silently erase alert evidence.
+- System-log references use `ON DELETE SET NULL` so technical logs survive if an event is removed.
 
-- Source information is stored once in `osint_sources`.
-- Detection information is stored in `threat_events`.
-- Alert history is stored in `alert_logs`.
-- Camera state history is stored in `camera_states`.
-- Technical activity is stored in `system_logs`.
+## Normalization audit
 
-This reduces repeated data and makes each table responsible for one main subject.
+The schema is designed to satisfy third normal form for the current Prototype 2 fields:
 
-Primary keys uniquely identify rows. Foreign keys connect related records and protect referential integrity.
+- Each table represents one main subject.
+- Each row has a primary key.
+- Non-key fields describe that table's subject.
+- Source details are stored only in `osint_sources`.
+- Current camera state is stored only in `camera_states`.
+- Threat events store source and camera IDs instead of duplicating their descriptive fields.
+- Alert-specific fields remain in `alert_logs`.
+- Technical log fields remain in `system_logs`.
+- Authentication fields remain in `users`.
+
+This structure reduces update, insertion, and deletion anomalies. Repeated OSINT reports remain separate threat events because repeated observations are evidence, not accidental database duplication.
 
 ## Database decision
 
 The final report proposed SQLite for local prototyping and PostgreSQL for the complete system.
 
-Prototype 1 uses PostgreSQL locally through Docker instead. This keeps local development closer to the planned final database and allows PostgreSQL constraints and migrations to be tested early.
+Prototype 2 uses PostgreSQL locally through Docker. This keeps development aligned with the intended deployment database and allows PostgreSQL constraints, foreign keys, and Alembic migrations to be tested before integration.
 
 Docker provides the PostgreSQL environment; Docker is not the database itself.
 
@@ -138,10 +152,11 @@ Apply migrations:
 (cd backend && alembic upgrade head)
 ```
 
-Roll back the report-alignment migration:
+```markdown
+Roll back the latest normalization migration:
 
 ```bash
-(cd backend && alembic downgrade 226eb47c96bb)
+(cd backend && alembic downgrade 4d70a0dd39ea)
 ```
 
 Reapply it:
