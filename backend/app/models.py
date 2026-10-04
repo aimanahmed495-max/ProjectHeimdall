@@ -17,6 +17,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .database import Base
 
+
 class User(Base):
     __tablename__ = "users"
 
@@ -46,6 +47,7 @@ class User(Base):
         DateTime(timezone=True),
         nullable=True,
     )
+
 
 class OsintSource(Base):
     __tablename__ = "osint_sources"
@@ -87,6 +89,10 @@ class ThreatEvent(Base):
             "confidence_score >= 0 AND confidence_score <= 1",
             name="ck_threat_events_confidence_range",
         ),
+        CheckConstraint(
+            "source_id IS NOT NULL OR camera_id IS NOT NULL",
+            name="ck_threat_events_has_origin",
+        ),
     )
 
     event_id: Mapped[int] = mapped_column(Integer, primary_key=True)
@@ -99,7 +105,7 @@ class ThreatEvent(Base):
         ForeignKey(
             "osint_sources.source_id",
             name="fk_threat_events_source_id_osint_sources",
-            ondelete="SET NULL",
+            ondelete="RESTRICT",
         ),
         nullable=True,
         index=True,
@@ -112,13 +118,13 @@ class ThreatEvent(Base):
         Float,
         nullable=False,
     )
-    camera_id: Mapped[int] = mapped_column(
+    camera_id: Mapped[Optional[int]] = mapped_column(
         ForeignKey(
             "camera_states.camera_id",
             name="fk_threat_events_camera_id_camera_states",
             ondelete="RESTRICT",
         ),
-        nullable=False,
+        nullable=True,
         index=True,
     )
     status: Mapped[str] = mapped_column(
@@ -132,12 +138,11 @@ class ThreatEvent(Base):
     osint_source: Mapped[Optional["OsintSource"]] = relationship(
         back_populates="threat_events",
     )
-    camera_state: Mapped["CameraState"] = relationship(
+    camera_state: Mapped[Optional["CameraState"]] = relationship(
         back_populates="threat_events",
     )
     alert_logs: Mapped[List["AlertLog"]] = relationship(
         back_populates="threat_event",
-        cascade="all, delete-orphan",
     )
     system_logs: Mapped[List["SystemLog"]] = relationship(
         back_populates="threat_event",
@@ -151,7 +156,7 @@ class AlertLog(Base):
     event_id: Mapped[int] = mapped_column(
         ForeignKey(
             "threat_events.event_id",
-            ondelete="CASCADE",
+            ondelete="RESTRICT",
         ),
         nullable=False,
         index=True,

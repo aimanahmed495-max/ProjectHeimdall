@@ -1,7 +1,22 @@
 [
-  "unusual movement reported near loading dock, unconfirmed",
-  "local news: break-in attempt reported two blocks away",
-  "scanner traffic: unmarked vehicle circling the south parking lot for 20 minutes",
-  "neighborhood watch: person in dark clothing lingering at the perimeter fence after hours",
-  "unconfirmed social post about a crowd gathering at the front gate; source reliability low"
+  {
+    "source_name": "Neighborhood Watch Network",
+    "alert_text": "unusual movement reported near loading dock, unconfirmed"
+  },
+  {
+    "source_name": "Local News Crime Desk",
+    "alert_text": "local news: break-in attempt reported two blocks away"
+  },
+  {
+    "source_name": "District 4 Police Scanner",
+    "alert_text": "scanner traffic: unmarked vehicle circling the south parking lot for 20 minutes"
+  },
+  {
+    "source_name": "Neighborhood Watch Network",
+    "alert_text": "person in dark clothing lingering at the perimeter fence after hours"
+  },
+  {
+    "source_name": "Neighborhood Watch Network",
+    "alert_text": "unconfirmed social post about a crowd gathering at the front gate; source reliability low"
+  }
 ]

@@ -9,9 +9,8 @@ from typing import Any, Dict, Optional, TypedDict
 
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
-from pydantic import BaseModel, Field, field_validator
-
 from osint_client import HeimdallAPIClient, HeimdallAPIError
+from pydantic import BaseModel, Field, field_validator
 
 
 class OsintAgentError(Exception):
@@ -44,6 +43,7 @@ class OsintAgentState(TypedDict, total=False):
     threat_event: Optional[Dict[str, Any]]
     system_log: Optional[Dict[str, Any]]
     error: Optional[str]
+    source_id: int
 
 
 class OsintAgent:
@@ -58,7 +58,6 @@ class OsintAgent:
     """
 
     MODEL_NAME = "openai/gpt-oss-20b"
-    CAMERA_ID = 1
     MODULE_NAME = "osint-agent"
     DEFAULT_STATUS = "Pending"
 
@@ -71,7 +70,7 @@ class OsintAgent:
         '"vehicle", "crowd", "package", or "unknown"\n'
         "- confidence_score: a float from 0.0 to 1.0\n\n"
         "Lower confidence when the report is unconfirmed, second-hand, "
-        "or vague. Use object_class \"unknown\" when no visual object "
+        'or vague. Use object_class "unknown" when no visual object '
         "is implied."
     )
 
@@ -104,23 +103,18 @@ class OsintAgent:
             api_key=api_key,
             temperature=0,
         )
-        self._structured_llm = self._llm.with_structured_output(
-            ThreatClassification
-        )
+        self._structured_llm = self._llm.with_structured_output(ThreatClassification)
         self._graph = self._build_graph()
 
-    def run(self, alert_text: str) -> OsintAgentState:
-        """Run the ingest → classify → post pipeline for one alert.
+    def run(self, alert_text: str, source_id: int) -> OsintAgentState:
+        """Run the pipeline for one source-attributed OSINT alert."""
 
-        Args:
-            alert_text: Raw OSINT alert string.
-
-        Returns:
-            Final graph state, including classification, API responses,
-            and any per-alert ``error`` message.
-        """
-
-        result = self._graph.invoke({"alert_text": alert_text})
+        result = self._graph.invoke(
+            {
+                "alert_text": alert_text,
+                "source_id": source_id,
+            }
+        )
         return dict(result)
 
     def _build_graph(self) -> Any:
@@ -186,9 +180,9 @@ class OsintAgent:
         try:
             threat_event = self._client.post_threat_event(
                 {
+                    "source_id": state["source_id"],
                     "object_class": object_class,
                     "confidence_score": confidence_score,
-                    "camera_id": self.CAMERA_ID,
                     "status": self.DEFAULT_STATUS,
                 }
             )
@@ -254,9 +248,7 @@ class OsintAgent:
         except json.JSONDecodeError:
             match = re.search(r"\{.*\}", text, re.DOTALL)
             if not match:
-                raise OsintAgentError(
-                    f"Model did not return JSON: {content!r}"
-                )
+                raise OsintAgentError(f"Model did not return JSON: {content!r}")
             payload = json.loads(match.group(0))
 
         return ThreatClassification.model_validate(payload)

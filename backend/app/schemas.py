@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class OsintSourceCreate(BaseModel):
@@ -50,12 +50,23 @@ class ThreatEventCreate(BaseModel):
     source_id: Optional[int] = Field(default=None, gt=0)
     object_class: str = Field(min_length=1, max_length=100)
     confidence_score: float = Field(ge=0, le=1)
-    camera_id: int = Field(gt=0)
+    camera_id: Optional[int] = Field(default=None, gt=0)
     status: str = Field(
         default="Pending",
         min_length=1,
         max_length=30,
     )
+
+    @model_validator(mode="after")
+    def require_event_origin(self) -> "ThreatEventCreate":
+        """Require every event to originate from OSINT, a camera, or both."""
+
+        if self.source_id is None and self.camera_id is None:
+            raise ValueError(
+                "A threat event requires a source_id, a camera_id, or both."
+            )
+
+        return self
 
 
 class ThreatEventRead(ThreatEventCreate):

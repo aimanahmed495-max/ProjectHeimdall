@@ -8,14 +8,12 @@ from pathlib import Path
 from typing import Any, Dict, List
 
 from dotenv import load_dotenv
-
 from osint_agent import OsintAgent, OsintAgentError, OsintAgentState
 from osint_client import (
     HeimdallAPIClient,
     HeimdallAPIError,
     HeimdallAPIUnavailableError,
 )
-
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -55,12 +53,17 @@ class OsintIngestionApp:
             return 1
 
         try:
+            self._client.authenticate()
+            print("Authentication: successful")
+            print()
+
             registered = self._register_sources(sources)
+            alerts = self._attach_source_ids(alerts, registered)
         except HeimdallAPIUnavailableError as exc:
             print(f"Error: {exc}", file=sys.stderr)
             return 1
-        except HeimdallAPIError as exc:
-            print(f"Error registering OSINT sources: {exc}", file=sys.stderr)
+        except (HeimdallAPIError, ValueError) as exc:
+            print(f"Error preparing OSINT ingestion: {exc}", file=sys.stderr)
             return 1
 
         self._print_source_summary(registered)
@@ -73,12 +76,16 @@ class OsintIngestionApp:
             return 1
 
         print(f"Processing {len(alerts)} mock alert(s)...\n")
-        results = [agent.run(alert) for alert in alerts]
+        results = [
+            agent.run(
+                alert["alert_text"],
+                alert["source_id"],
+            )
+            for alert in alerts
+        ]
         self._print_alert_summary(results)
 
-        posted = sum(
-            1 for result in results if result.get("threat_event")
-        )
+        posted = sum(1 for result in results if result.get("threat_event"))
         failed = sum(1 for result in results if result.get("error"))
         print()
         print(
@@ -102,6 +109,36 @@ class OsintIngestionApp:
             registered.append(self._client.register_source(source))
         return registered
 
+    def _attach_source_ids(
+        self,
+        alerts: List[Dict[str, Any]],
+        sources: List[Dict[str, Any]],
+    ) -> List[Dict[str, Any]]:
+        """Resolve each alert's source name to its registered database ID."""
+
+        source_ids = {
+            source["source_name"]: source["source_id"]
+            for source in sources
+            if source.get("source_id") is not None
+        }
+
+        attributed_alerts: List[Dict[str, Any]] = []
+        for alert in alerts:
+            source_name = alert["source_name"]
+            source_id = source_ids.get(source_name)
+
+            if source_id is None:
+                raise ValueError(f"Alert references unregistered source: {source_name}")
+
+            attributed_alerts.append(
+                {
+                    **alert,
+                    "source_id": source_id,
+                }
+            )
+
+        return attributed_alerts
+
     def _load_json_list(self, filename: str) -> List[Dict[str, Any]]:
         """Load a JSON array of objects from the package directory."""
 
@@ -111,21 +148,34 @@ class OsintIngestionApp:
             raise ValueError(f"{filename} must contain a JSON array.")
         return data
 
-    def _load_alerts(self, filename: str) -> List[str]:
-        """Load raw alert strings from ``mock_alerts.json``."""
+    def _load_alerts(self, filename: str) -> List[Dict[str, Any]]:
+        """Load source-attributed alerts from ``mock_alerts.json``."""
 
         path = self._package_dir / filename
         data = json.loads(path.read_text(encoding="utf-8"))
         if not isinstance(data, list):
-            raise ValueError(f"{filename} must contain a JSON array of strings.")
+            raise ValueError(f"{filename} must contain a JSON array.")
 
-        alerts: List[str] = []
+        alerts: List[Dict[str, Any]] = []
         for item in data:
-            if not isinstance(item, str) or not item.strip():
-                raise ValueError(
-                    f"{filename} must contain non-empty alert strings."
-                )
-            alerts.append(item.strip())
+            if not isinstance(item, dict):
+                raise ValueError(f"{filename} must contain alert objects.")
+
+            source_name = item.get("source_name")
+            alert_text = item.get("alert_text")
+
+            if not isinstance(source_name, str) or not source_name.strip():
+                raise ValueError("Each alert requires a non-empty source_name.")
+
+            if not isinstance(alert_text, str) or not alert_text.strip():
+                raise ValueError("Each alert requires non-empty alert_text.")
+
+            alerts.append(
+                {
+                    "source_name": source_name.strip(),
+                    "alert_text": alert_text.strip(),
+                }
+            )
 
         if not alerts:
             raise ValueError(f"{filename} does not contain any alerts.")
@@ -137,11 +187,7 @@ class OsintIngestionApp:
 
         print("Registered sources:")
         for source in sources:
-            label = (
-                "exists"
-                if source.get("already_registered")
-                else "created"
-            )
+            label = "exists" if source.get("already_registered") else "created"
             source_id = source.get("source_id", "-")
             name = source.get("source_name", "unknown")
             print(f"  [{label}] {name} (id={source_id})")
@@ -158,8 +204,7 @@ class OsintIngestionApp:
             if object_class:
                 confidence = float(result.get("confidence_score", 0.0))
                 print(
-                    f"   Classification: {object_class} "
-                    f"(confidence {confidence:.2f})"
+                    f"   Classification: {object_class} (confidence {confidence:.2f})"
                 )
             elif error:
                 print("   Classification: (failed)")

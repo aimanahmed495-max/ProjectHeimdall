@@ -29,6 +29,8 @@ class HeimdallAPIClient:
         self,
         base_url: Optional[str] = None,
         timeout: float = 10.0,
+        username: Optional[str] = None,
+        password: Optional[str] = None,
     ) -> None:
         """Create a client pointed at the Heimdall Core API.
 
@@ -41,6 +43,8 @@ class HeimdallAPIClient:
         resolved = base_url or os.getenv("BASE_URL", "http://localhost:8000")
         self._base_url = resolved.rstrip("/")
         self._timeout = timeout
+        self._username = username or os.getenv("OSINT_API_USERNAME")
+        self._password = password or os.getenv("OSINT_API_PASSWORD")
         self._session = requests.Session()
         self._session.headers.update(
             {
@@ -54,6 +58,33 @@ class HeimdallAPIClient:
         """Return the API origin this client is using."""
 
         return self._base_url
+
+    def authenticate(self) -> None:
+        """Log in and attach a bearer token to future API requests."""
+
+        if not self._username or not self._password:
+            raise HeimdallAPIError(
+                "OSINT API credentials are missing. Set "
+                "OSINT_API_USERNAME and OSINT_API_PASSWORD."
+            )
+
+        response = self._request(
+            "POST",
+            "/auth/login",
+            json_body={
+                "username": self._username,
+                "password": self._password,
+            },
+        )
+        self._ensure_success(response, expected_status=200)
+
+        token = response.json().get("access_token")
+        if not token:
+            raise HeimdallAPIError(
+                "Heimdall authentication response did not include an access token."
+            )
+
+        self._session.headers.update({"Authorization": f"Bearer {token}"})
 
     def register_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
         """Register an OSINT source with ``POST /sources``.
@@ -151,10 +182,7 @@ class HeimdallAPIClient:
             return None
 
         for source in sources:
-            if (
-                isinstance(source, dict)
-                and source.get("source_name") == source_name
-            ):
+            if isinstance(source, dict) and source.get("source_name") == source_name:
                 return source
 
         return None

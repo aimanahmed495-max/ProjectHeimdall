@@ -129,6 +129,42 @@ def test_create_and_get_threat_event(client):
     assert get_response.json()[0]["source_id"] == source["source_id"]
 
 
+def test_create_source_only_threat_event(client):
+    source = create_source(client)
+
+    response = client.post(
+        "/threat-events",
+        json={
+            "source_id": source["source_id"],
+            "object_class": "Crowd",
+            "confidence_score": 0.74,
+            "status": "Pending",
+        },
+    )
+
+    assert response.status_code == 201
+
+    threat = response.json()
+    assert threat["source_id"] == source["source_id"]
+    assert threat["camera_id"] is None
+
+
+def test_threat_event_requires_source_or_camera(client):
+    response = client.post(
+        "/threat-events",
+        json={
+            "object_class": "Unknown",
+            "confidence_score": 0.4,
+            "status": "Pending",
+        },
+    )
+
+    assert response.status_code == 422
+    assert "A threat event requires a source_id, a camera_id, or both." in (
+        response.text
+    )
+
+
 @pytest.mark.parametrize("score", [-0.01, 1.01])
 def test_threat_confidence_must_be_between_zero_and_one(client, score):
     response = client.post(

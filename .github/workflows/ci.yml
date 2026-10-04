@@ -59,6 +59,22 @@ jobs:
           --cov-report=term-missing
           --cov-fail-under=60
 
+  osint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install OSINT dependencies
+        run: |
+          pip install -r ai-brain/requirements.txt
+          pip install pytest ruff
+      - name: Lint OSINT module
+        run: ruff check ai-brain/ --select E,F,I
+      - name: Run OSINT tests
+        run: pytest ai-brain/tests -q
+
   frontend:
     runs-on: ubuntu-latest
     steps:

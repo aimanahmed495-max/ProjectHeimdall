@@ -1,45 +1,78 @@
 # Heimdall OSINT Ingestion
 
-Prototype LangGraph agent that turns mock open-source alerts into Heimdall threat events.
+Authenticated LangGraph pipeline that converts mock open-source reports into source-attributed Heimdall threat events.
 
-The pipeline loads a few fake OSINT sources and raw alert strings, registers the sources with the existing FastAPI backend, then runs each alert through a three-node LangGraph: ingest the text, classify a likely visual object with Groq's GPT-OSS 20B model, and post a threat event plus a system log to `http://localhost:8000`. This module talks only to the real `/sources`, `/threat-events`, and `/system-logs` endpoints; it does not start Docker or the API itself.
+The pipeline:
+
+1. Logs into the Heimdall API using configured OSINT service credentials.
+2. Registers the mock OSINT sources or reuses existing records.
+3. Resolves each alert’s source name to its database `source_id`.
+4. Uses Groq’s GPT-OSS 20B model to classify the alert.
+5. Posts an OSINT-only threat event with a `source_id` and no fake `camera_id`.
+6. Posts a system log referencing the created threat event.
+
+This module uses the real `/auth/login`, `/sources`, `/threat-events`, and `/system-logs` endpoints. It does not start Docker or the backend itself.
 
 ## Requirements
 
-- Python 3.10+
-- A running Heimdall Core API at `http://localhost:8000` (see `backend/README.md`)
-- A Groq API key
+- Python 3.9+
+- A running Heimdall Core API at `http://localhost:8000`
+- A registered Heimdall service account
+- A valid Groq API key
+
+See `backend/README.md` for backend setup instructions.
 
 ## Install
 
-From the repository root:
+From the repository root using the project virtual environment:
 
 ```bash
-cd ai-brain
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
+python -m pip install -r ai-brain/requirements.txt
+
 ```
 
 ## Environment
 
+Create the private environment file only if one does not already exist:
+
 ```bash
-cp .env.example .env
+test -f ai-brain/.env || cp ai-brain/.env.example ai-brain/.env
 ```
 
-Edit `.env` and set:
+Set the following values in `ai-brain/.env`:
 
 ```text
 GROQ_API_KEY=your_groq_api_key
 BASE_URL=http://localhost:8000
+OSINT_API_USERNAME=your_osint_service_username
+OSINT_API_PASSWORD=your_osint_service_password
 ```
+
+The `.env` file is ignored by Git. Do not commit real API keys or passwords.
+
+## Mock data
+
+- `mock_sources.json` contains the OSINT source records.
+- `mock_alerts.json` contains alert text and the source that reported it.
+- Multiple reports may reference the same source because repeated observations are valid evidence, not accidental database duplication.
 
 ## Run
 
-Make sure the API is up, then from `ai-brain/`:
+Start PostgreSQL and the backend first, then run:
 
 ```bash
+cd ai-brain
 python main.py
 ```
 
-The process prints a live summary of each alert, its Groq classification, and the API response. If the backend is not running, it exits with a clear error instead of crashing.
+The process prints authentication status, source registration, Groq classifications, created record IDs, and any errors.
+
+## Test
+
+From the repository root:
+
+```bash
+python -m pytest ai-brain/tests -q
+```
+
+The tests verify authentication, bearer-token setup, source attribution, unknown-source rejection, and OSINT-only event creation without fake camera references.

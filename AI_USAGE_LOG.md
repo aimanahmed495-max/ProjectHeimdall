@@ -2,11 +2,11 @@
 
 ## 2026-09-07 to 2026-09-11 — Frontend dashboard prototype
 
-**Developer:** Zareer Khan 
+**Developer:** Zareer Khan
 
-**Branch:** `feature/2-frontend`  
-**Related issue:** #2 — Implementation of frontend dashboard prototype  
-**AI tools:** Claude and ChatGPT 
+**Branch:** `feature/2-frontend`
+**Related issue:** #2 — Implementation of frontend dashboard prototype
+**AI tools:** Claude and ChatGPT
 **Updated:** September 8, 2026
 
 This retrospective log groups work by development stage. AI assistance included debugging guidance, and technical explanations. My contribution included selecting the design, directing requirements, applying guided changes, running the application, testing interactions, and publishing the branch.
@@ -339,3 +339,15 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Protected all write endpoints with JWT bearer authentication, kept read and health endpoints public, connected the vision pipeline to authenticated API requests, added a registration feature flag, expanded API and client tests, and updated backend and vision documentation.
 
 **Verification:** All 48 backend tests passed, backend coverage reached 97.45%, Ruff checks passed, Alembic detected no pending schema changes, Docker Compose configuration validated, and the authenticated vision pipeline completed successfully with camera state transitions and protected event posting.
+
+
+## 2026-10-02 — Database Normalization and Authenticated OSINT Integration
+
+**Developer:** Arham Sadid Hossain
+**Branch:** `feature/7-database-normalization-audit`
+
+**AI assistance:** Reviewed normalization, referential-integrity, deletion-behavior, authenticated service-client, testing, CI, and documentation concepts; assisted with troubleshooting the Alembic migration and OSINT integration.
+
+**Human work completed:** Audited the Prototype 2 schema for third normal form, allowed threat events to originate from OSINT, vision, or both, added a database constraint requiring at least one origin, changed source, camera, and alert relationships to prevent destructive deletion, removed the OSINT pipeline’s fake camera dependency, added source attribution and JWT authentication to OSINT ingestion, added automated OSINT tests and a CI job, and updated backend and OSINT documentation.
+
+**Verification:** Successfully tested Alembic upgrade, downgrade, and schema synchronization; confirmed PostgreSQL foreign-key and check constraints; passed all 50 backend tests with 97.49% coverage and all 5 OSINT tests; passed Ruff, compilation, Docker Compose validation, and whitespace checks; and completed a live authenticated OSINT run that classified and posted 5 source-attributed threat events with linked system logs.
