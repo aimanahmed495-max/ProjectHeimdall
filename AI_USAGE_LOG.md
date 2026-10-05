@@ -351,3 +351,40 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Audited the Prototype 2 schema for third normal form, allowed threat events to originate from OSINT, vision, or both, added a database constraint requiring at least one origin, changed source, camera, and alert relationships to prevent destructive deletion, removed the OSINT pipeline’s fake camera dependency, added source attribution and JWT authentication to OSINT ingestion, added automated OSINT tests and a CI job, and updated backend and OSINT documentation.
 
 **Verification:** Successfully tested Alembic upgrade, downgrade, and schema synchronization; confirmed PostgreSQL foreign-key and check constraints; passed all 50 backend tests with 97.49% coverage and all 5 OSINT tests; passed Ruff, compilation, Docker Compose validation, and whitespace checks; and completed a live authenticated OSINT run that classified and posted 5 source-attributed threat events with linked system logs.
+
+## 2026-09-22 — Frontend Authentication Integration
+
+**Developer:** Zareer Khan
+**Branch:** `feature/frontend-auth-ui`
+
+**AI assistance:** ChatGPT/Codex provided guidance for connecting registration, login, and user verification to the backend; assisted with CORS configuration, Docker configuration, troubleshooting.
+
+**Human work completed:** Connected the frontend to the existing `/auth/register`, `/auth/login`, and `/auth/me` endpoints, configured the local environment, and tested account creation and sign-in. Implemented the authentication gate and sign-out flow while preserving the dashboard design. Submitted the changes for team review in PR #23.
+
+**Verification:** Manually verified registration, successful login, invalid-password rejection, sign-out, and signing in again. Ran the existing dashboard and demo API suite: 5 tests passed with 1 dependency deprecation warning. 
+
+
+## 2026-10-03 — Original Dashboard Integration with the Core Backend
+
+**Developer:** Zareer Khan
+**Branch:** `feature/prototype2-real-data`
+
+**AI assistance:** ChatGPT/Codex assisted with reviewing frontend/backend compatibility. Provided guidance for authenticated REST requests, record mapping, polling, session cleanup, connection-status messages, and testing.
+
+**Human work completed:** Applied and tested the integration in VS Code, retained the original dashboard layout, and connected it to sources, threat events, alert logs, camera states, and system logs. Replaced the dashboard's prototype data flow with REST collection loading and periodic refresh. Displayed camera-state information without claiming a live video feed and kept unsupported actions disabled. Submitted the integration for team review in PR #26.
+
+**Verification:** Manually checked authenticated dashboard loading and confirmed that a backend-created threat event appeared in the console. Checked the original dashboard views and record display. Ran the existing dashboard and demo API suite: 5 tests passed. These existing tests did not provide complete automated coverage of the new core-backend integration.
+
+
+## 2026-10-04 — Frontend Error Handling, Feature Visibility, and Behavior Tests
+
+**Developer:** Zareer Khan
+**Branch:** `feature/27-dashboard-actions`
+
+**AI assistance:** ChatGPT/Codex generated a 22-test frontend behavior suite using Node.js and jsdom, tested it against the uploaded console.
+
+**Human work completed:** Applied the error-handling and feature-flag changes in VS Code. Added readable messages for HTTP errors, network failures, and unreadable responses. Hid unsupported acknowledgment, threat-status, and camera-control actions while preserving available detail views and the original dashboard layout. Added the supplied test files to the project, ran them locally through Docker, and saved the work in a local commit.
+
+**Verification:** All 22 frontend behavior tests passed locally using Node.js 22 through Docker. Tests covered authentication, registration, logout, session expiry, record rendering, escaped API text, polling, stale-data handling, network recovery, feature visibility, and prevention of late responses repopulating a signed-out dashboard. The suite used simulated API responses and mocked map functionality. The existing Python suite also passed: 5 tests with 1 dependency deprecation warning. Manually stopped and restarted the API to verify the connection warning and automatic recovery. `git diff --check` reported no whitespace errors.
+
+**Remaining work:** Connect and test alert acknowledgment, threat-status updates, source soft-deletion, and camera-state history when the corresponding backend contracts are available. Feature visibility and simulated-response tests do not establish backend authorization or complete end-to-end integration.
