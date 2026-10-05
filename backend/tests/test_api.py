@@ -1,4 +1,5 @@
 import pytest
+from backend.app import models
 
 
 def create_source(client):
@@ -467,3 +468,225 @@ def test_system_log_rejects_missing_threat_event(client):
 
     assert response.status_code == 404
     assert response.json()["detail"] == "Threat event not found."
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        "/sources",
+        "/sources/1",
+        "/threat-events",
+        "/threat-events/1",
+        "/alert-logs",
+        "/alert-logs/1",
+        "/camera-states",
+        "/camera-states/1",
+        "/system-logs",
+    ],
+)
+def test_resource_get_endpoints_require_auth(
+    unauthenticated_client,
+    path,
+):
+    response = unauthenticated_client.get(path)
+
+    assert response.status_code == 401
+
+
+def test_update_threat_event_status(client):
+    threat = create_threat(client)
+
+    response = client.patch(
+        f"/threat-events/{threat['event_id']}",
+        json={"status": "Resolved"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "Resolved"
+
+    get_response = client.get(f"/threat-events/{threat['event_id']}")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["status"] == "Resolved"
+
+
+def test_update_alert_acknowledgement(client):
+    threat = create_threat(client)
+
+    create_response = client.post(
+        "/alert-logs",
+        json={
+            "event_id": threat["event_id"],
+            "alert_level": "Critical",
+            "message": "Operator review required",
+            "acknowledged": False,
+        },
+    )
+    assert create_response.status_code == 201
+    alert = create_response.json()
+
+    response = client.patch(
+        f"/alert-logs/{alert['alert_id']}",
+        json={"acknowledged": True},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["acknowledged"] is True
+
+    get_response = client.get(f"/alert-logs/{alert['alert_id']}")
+
+    assert get_response.status_code == 200
+    assert get_response.json()["acknowledged"] is True
+
+
+def test_soft_delete_source(client, db_session):
+    source = create_source(client)
+
+    response = client.delete(f"/sources/{source['source_id']}")
+
+    assert response.status_code == 204
+
+    db_session.expire_all()
+    stored_source = db_session.get(models.OsintSource, source["source_id"])
+    assert stored_source is not None
+    assert stored_source.deleted_at is not None
+
+    assert client.get("/sources").json() == []
+    assert client.get(f"/sources/{source['source_id']}").status_code == 404
+
+    create_response = client.post(
+        "/threat-events",
+        json={
+            "source_id": source["source_id"],
+            "object_class": "Crowd",
+            "confidence_score": 0.7,
+            "status": "Pending",
+        },
+    )
+    assert create_response.status_code == 404
+
+
+def test_soft_delete_threat_event(client, db_session):
+    threat = create_threat(client)
+
+    response = client.delete(f"/threat-events/{threat['event_id']}")
+
+    assert response.status_code == 204
+
+    db_session.expire_all()
+    stored_threat = db_session.get(models.ThreatEvent, threat["event_id"])
+    assert stored_threat is not None
+    assert stored_threat.deleted_at is not None
+
+    assert client.get("/threat-events").json() == []
+    assert client.get(f"/threat-events/{threat['event_id']}").status_code == 404
+
+    update_response = client.patch(
+        f"/threat-events/{threat['event_id']}",
+        json={"status": "Resolved"},
+    )
+    assert update_response.status_code == 404
+
+    alert_response = client.post(
+        "/alert-logs",
+        json={
+            "event_id": threat["event_id"],
+            "alert_level": "High",
+            "message": "Deleted threat",
+            "acknowledged": False,
+        },
+    )
+    assert alert_response.status_code == 404
+
+    log_response = client.post(
+        "/system-logs",
+        json={
+            "event_id": threat["event_id"],
+            "module": "Core API",
+            "message": "Deleted threat",
+        },
+    )
+    assert log_response.status_code == 404
+
+
+def test_soft_delete_alert_log(client, db_session):
+    threat = create_threat(client)
+
+    create_response = client.post(
+        "/alert-logs",
+        json={
+            "event_id": threat["event_id"],
+            "alert_level": "Critical",
+            "message": "Operator review required",
+            "acknowledged": False,
+        },
+    )
+    assert create_response.status_code == 201
+    alert = create_response.json()
+
+    response = client.delete(f"/alert-logs/{alert['alert_id']}")
+
+    assert response.status_code == 204
+
+    db_session.expire_all()
+    stored_alert = db_session.get(models.AlertLog, alert["alert_id"])
+    assert stored_alert is not None
+    assert stored_alert.deleted_at is not None
+
+    assert client.get("/alert-logs").json() == []
+    assert client.get(f"/alert-logs/{alert['alert_id']}").status_code == 404
+
+    update_response = client.patch(
+        f"/alert-logs/{alert['alert_id']}",
+        json={"acknowledged": True},
+    )
+    assert update_response.status_code == 404
+
+
+def test_update_threat_event_corroboration_time(client):
+    threat = create_threat(client)
+
+    response = client.patch(
+        f"/threat-events/{threat['event_id']}",
+        json={"corroborated_at": "2026-10-05T06:00:00Z"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["corroborated_at"].startswith("2026-10-05T06:00:00")
+    assert response.json()["status"] == "Pending"
+
+
+def test_update_threat_event_rejects_empty_body(client):
+    threat = create_threat(client)
+
+    response = client.patch(
+        f"/threat-events/{threat['event_id']}",
+        json={},
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("method", "path", "json_body"),
+    [
+        ("DELETE", "/sources/1", None),
+        ("PATCH", "/threat-events/1", {"status": "Resolved"}),
+        ("DELETE", "/threat-events/1", None),
+        ("PATCH", "/alert-logs/1", {"acknowledged": True}),
+        ("DELETE", "/alert-logs/1", None),
+    ],
+)
+def test_new_write_endpoints_require_auth(
+    unauthenticated_client,
+    method,
+    path,
+    json_body,
+):
+    response = unauthenticated_client.request(
+        method,
+        path,
+        json=json_body,
+    )
+
+    assert response.status_code == 401

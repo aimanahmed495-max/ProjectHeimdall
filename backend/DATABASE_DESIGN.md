@@ -15,12 +15,14 @@ erDiagram
     THREAT_EVENTS ||--o{ ALERT_LOGS : produces
     THREAT_EVENTS o|--o{ SYSTEM_LOGS : references
 
+
     OSINT_SOURCES {
         int source_id PK
         string source_name UK
         string source_type
         string url
         float reliability_score
+        datetime deleted_at
     }
 
     CAMERA_STATES {
@@ -40,6 +42,8 @@ erDiagram
         float confidence_score
         int camera_id FK
         string status
+        datetime corroborated_at
+        datetime deleted_at
     }
 
     ALERT_LOGS {
@@ -49,6 +53,7 @@ erDiagram
         string alert_level
         string message
         boolean acknowledged
+        datetime deleted_at
     }
 
     SYSTEM_LOGS {
@@ -65,6 +70,7 @@ erDiagram
 ### `osint_sources`
 
 Stores approved OSINT source details once, including the source name, type, URL, and reliability score.
+Soft-deleted sources remain stored with a `deleted_at` timestamp but are excluded from normal API reads and cannot be assigned to new threat events.
 
 ### `camera_states`
 
@@ -80,9 +86,12 @@ Every threat event must have at least one origin:
 - Vision-only: `camera_id` is set and `source_id` is `NULL`.
 - Correlated evidence: both IDs may be set.
 
+`corroborated_at` provides a nullable timestamp for future OSINT and vision corroboration logic. Soft-deleted events remain stored for auditability but are excluded from normal API reads and cannot receive new alerts or system-log references.
+
 ### `alert_logs`
 
 Stores alerts generated for threat events, including severity, message, timestamp, and acknowledgement status.
+Operators can update the acknowledgement state. Soft-deleted alerts remain stored with a `deleted_at` timestamp but are excluded from normal API reads.
 
 ### `system_logs`
 
@@ -101,6 +110,9 @@ Stores authentication accounts separately from the report-domain tables. Passwor
 - Referenced sources and cameras use `ON DELETE RESTRICT`.
 - Alert-to-event references use `ON DELETE RESTRICT` so deleting an event cannot silently erase alert evidence.
 - System-log references use `ON DELETE SET NULL` so technical logs survive if an event is removed.
+- API deletion of OSINT sources, threat events, and alert logs is implemented as soft deletion by setting `deleted_at`.
+- Soft deletion preserves database rows and their foreign-key relationships while hiding deleted records from normal API reads.
+- The database `ON DELETE` rules still protect integrity if physical deletion is performed administratively.
 
 ## Normalization audit
 

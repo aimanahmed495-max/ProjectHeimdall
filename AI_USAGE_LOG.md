@@ -351,3 +351,15 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Audited the Prototype 2 schema for third normal form, allowed threat events to originate from OSINT, vision, or both, added a database constraint requiring at least one origin, changed source, camera, and alert relationships to prevent destructive deletion, removed the OSINT pipeline’s fake camera dependency, added source attribution and JWT authentication to OSINT ingestion, added automated OSINT tests and a CI job, and updated backend and OSINT documentation.
 
 **Verification:** Successfully tested Alembic upgrade, downgrade, and schema synchronization; confirmed PostgreSQL foreign-key and check constraints; passed all 50 backend tests with 97.49% coverage and all 5 OSINT tests; passed Ruff, compilation, Docker Compose validation, and whitespace checks; and completed a live authenticated OSINT run that classified and posted 5 source-attributed threat events with linked system logs.
+
+## 2026-10-05 — Backend CRUD, Soft Deletion, and Protected Reads
+
+**Developer:** Arham Sadid Hossain
+
+**Branch:** `feature/28-backend-crud-security`
+
+**AI assistance:** Reviewed soft-deletion design, authenticated read access, PATCH and DELETE endpoint behavior, Alembic migration safety, integration-test coverage, and documentation consistency; assisted with troubleshooting implementation and validation.
+
+**Human work completed:** Added nullable `deleted_at` fields to OSINT sources, threat events, and alert logs; added `corroborated_at` support to threat events; protected resource GET endpoints with JWT authentication; added authenticated record-by-ID, status update, alert acknowledgement, and soft-delete endpoints; prevented deleted records from appearing in normal reads or receiving new references; added an Alembic migration, automated tests, and updated database documentation.
+
+**Verification:** Successfully tested the Alembic upgrade and downgrade, confirmed no pending schema operations, passed all 71 backend tests with 96.91% coverage, and passed Ruff, compilation, and whitespace checks.
