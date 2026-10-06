@@ -425,3 +425,15 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Applied the changes locally, rebuilt the frontend, and manually tested marking threats resolved and reopening them as pending while retaining alert acknowledgment state.
 
 **Verification:** All 38 Node.js/jsdom frontend tests passed using mocked API responses, including eight new threat-status tests. Coverage includes status persistence, unchanged acknowledgment state, HTTP errors, duplicate requests, logout during requests, stale responses, and invalid response data. Manual browser testing against the local backend passed. git diff --check reported no whitespace errors.
+
+## 2026-10-06 — Frontend Source Deletion
+
+**Developer:** Zareer Khan
+
+**Branch:** `feature/27-dashboard-actions`
+
+**AI assistance:** ChatGPT/Codex provided guidance on confirmation, error handling, and preventing stale responses from restoring deleted sources.
+
+**Human work completed:** Applied the changes to the existing dashboard and test files, rebuilt the frontend, and manually verified cancellation, successful deletion, persistence after refresh and login, and retention of existing threats and alerts.
+
+**Verification:** All 48 Node.js/jsdom frontend tests passed using mocked API responses. Manual source-deletion checks against the local backend passed. `git diff --check` reported no whitespace errors.

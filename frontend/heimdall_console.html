@@ -969,6 +969,7 @@ body.auth-locked > #app {
       <h2>Analytics</h2>
       <span class="kick" id="intelWindow"></span>
     </div>
+    <section id="sourceManagement" class="dsec" aria-label="Source management" hidden style="margin-bottom:24px"></section>
     <div class="cards" style="margin-bottom:var(--space-6);border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--line)">
       <div class="kcard">
         <span class="kick">SIGNAL VOLUME · 6H</span>
@@ -1096,7 +1097,7 @@ const API_BASE = '__HEIMDALL_API_URL__';
 const FEATURES = Object.freeze({
   alertAcknowledgment: true,
   threatStatusUpdates: true,
-  sourceDeletion: false,
+  sourceDeletion: true,
   cameraHistory: false,
   cameraControls: false
 });
@@ -1721,7 +1722,7 @@ function mapCoreRecords(){
   if(state.selected && !signals.some(s=>s.id===state.selected)){state.selected=null;$('#drawer').dataset.open='0';$('#drawer').setAttribute('aria-hidden','true');}
 }
 function endCoreSession(message='Signed out successfully.'){
-  ackRequest?.controller.abort();ackRequest=null;
+  writeRequest?.controller.abort();writeRequest=null;
   sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();coreBusy=false;
   authState.token=null;authState.user=null;backend.connected=false;lastIngest=null;
   for(const key of Object.keys(coreData))coreData[key]=[];
@@ -1755,10 +1756,11 @@ function coreApiError(status) {
 }
 
 /* Acknowledge individual backend alerts. */
-let ackRequest = null;
+let writeRequest = null;
 let coreReadVersion = 0;
 
 function renderAlertActions() {
+  renderSourceManagement();
   renderThreatActions();
   const box = document.getElementById('alertActions');
   box.replaceChildren();
@@ -1786,9 +1788,9 @@ function renderAlertActions() {
     button.type = 'button';
     button.className = 'btn btn-secondary btn-xs';
     button.dataset.ackAlert = String(alert.alert_id);
-    button.disabled = alert.acknowledged || !!ackRequest || !backend.connected;
+    button.disabled = alert.acknowledged || !!writeRequest || !backend.connected;
     button.textContent = alert.acknowledged ? 'Acknowledged'
-      : ackRequest?.kind === 'alert' && ackRequest.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
+      : writeRequest?.kind === 'alert' && writeRequest.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
     button.addEventListener('click', () => acknowledgeAlert(alert.alert_id));
     row.append(label, button);
     box.appendChild(row);
@@ -1817,22 +1819,22 @@ function renderThreatActions() {
     button.className = 'btn btn-secondary btn-xs';
     button.style.marginRight = '8px';
     button.dataset.threatStatus = value;
-    button.disabled = !!ackRequest || !backend.connected;
-    button.textContent = ackRequest?.kind === 'threat' && ackRequest.id === event.backendId ? 'Saving…' : label;
+    button.disabled = !!writeRequest || !backend.connected;
+    button.textContent = writeRequest?.kind === 'threat' && writeRequest.id === event.backendId ? 'Saving…' : label;
     button.addEventListener('click', () => updateThreatStatus(event.backendId, value));
     box.appendChild(button);
   }
 }
 
 async function acknowledgeAlert(alertId) {
-  if (!FEATURES.alertAcknowledgment || !authState.token || ackRequest) return;
+  if (!FEATURES.alertAcknowledgment || !authState.token || writeRequest) return;
   const id = String(alertId);
   const alert = coreData.alerts.find(a => String(a.alert_id) === id);
   if (!alert || alert.acknowledged || !backend.connected) return;
   const token = authState.token, epoch = sessionEpoch;
   const controller = new AbortController();
   const request = {id, controller, kind: 'alert'};
-  ackRequest = request;
+  writeRequest = request;
   const current = () => epoch === sessionEpoch && token === authState.token;
 
   // Invalidate reads started before this write so they cannot restore old data.
@@ -1881,8 +1883,8 @@ async function acknowledgeAlert(alertId) {
     toast(message);
   } finally {
     clearTimeout(timeout);
-    if (ackRequest === request) {
-      ackRequest = null;
+    if (writeRequest === request) {
+      writeRequest = null;
       if (current()) {
         renderAlertActions();
         // Reconcile with the backend, including requests whose response was lost.
@@ -1894,14 +1896,14 @@ async function acknowledgeAlert(alertId) {
 
 
 async function updateThreatStatus(eventId, nextStatus) {
-  if (!FEATURES.threatStatusUpdates || !authState.token || ackRequest) return;
+  if (!FEATURES.threatStatusUpdates || !authState.token || writeRequest) return;
   const id = String(eventId);
   const event = coreData.events.find(e => String(e.event_id) === id);
   if (!event || !['Pending', 'Resolved'].includes(nextStatus) || event.status === nextStatus || !backend.connected) return;
   const token = authState.token, epoch = sessionEpoch;
   const controller = new AbortController();
   const request = {id, controller, kind: 'threat'};
-  ackRequest = request;
+  writeRequest = request;
   const current = () => epoch === sessionEpoch && token === authState.token;
 
   // Invalidate reads started before this write so they cannot restore old data.
@@ -1948,8 +1950,108 @@ async function updateThreatStatus(eventId, nextStatus) {
     toast(message);
   } finally {
     clearTimeout(timeout);
-    if (ackRequest === request) {
-      ackRequest = null;
+    if (writeRequest === request) {
+      writeRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
+function renderSourceManagement() {
+  const box = document.getElementById('sourceManagement');
+  box.replaceChildren();
+  box.hidden = !FEATURES.sourceDeletion;
+  if (box.hidden || !authState.token) return;
+  const heading = document.createElement('h3');
+  heading.textContent = 'Source management';
+  const help = document.createElement('p');
+  help.textContent = 'Delete a source from the active registry. Existing events and alerts remain; new events cannot use a deleted source.';
+  box.append(heading, help);
+  if (!coreData.sources.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No active sources.';
+    box.appendChild(empty);
+  }
+  for (const source of coreData.sources) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)';
+    row.dataset.sourceRow = String(source.source_id);
+    const name = document.createElement('span');
+    name.textContent = `${source.source_name} · ID ${source.source_id}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.dataset.deleteSource = String(source.source_id);
+    button.setAttribute('aria-label', `Delete source ${source.source_name}, ID ${source.source_id}`);
+    button.disabled = !!writeRequest || !backend.connected;
+    button.textContent = writeRequest?.kind === 'source' && writeRequest.id === String(source.source_id) ? 'Deleting…' : 'Delete source';
+    button.addEventListener('click', () => deleteSource(source.source_id));
+    row.append(name, button);
+    box.appendChild(row);
+  }
+}
+
+async function deleteSource(sourceId) {
+  if (!FEATURES.sourceDeletion || !authState.token || writeRequest) return;
+  const id = String(sourceId);
+  const source = coreData.sources.find(r => String(r.source_id) === id);
+  if (!source || !backend.connected) return;
+  if (!window.confirm(`Delete source "${source.source_name}" (ID ${id})?\n\nIt will leave the active source list. Existing threats and alerts remain, but new events cannot use this source. There is no restore control in this console.`)) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller, kind: 'source'};
+  writeRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/sources/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        headers: {Authorization: `Bearer ${token}`},
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    // DELETE returns 204 with no response body; do not attempt JSON parsing.
+    if (response.status !== 204) {
+      throw new Error('The backend did not confirm deletion. Refresh to check the source before retrying.');
+    }
+    coreData.sources = coreData.sources.filter(r => String(r.source_id) !== id);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Source #${id} deleted. Existing threats and alerts were retained.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Source deletion timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm source deletion. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (writeRequest === request) {
+      writeRequest = null;
       if (current()) {
         renderAlertActions();
         // Reconcile with the backend, including requests whose response was lost.
@@ -1961,7 +2063,7 @@ async function updateThreatStatus(eventId, nextStatus) {
 
 
 async function loadCoreData(){
-  if(!authState.token || coreBusy || ackRequest)return;
+  if(!authState.token || coreBusy || writeRequest)return;
   clearTimeout(coreTimer);coreBusy=true;
   const token=authState.token,epoch=sessionEpoch,controller=new AbortController();coreController=controller;
   const timeout=setTimeout(()=>controller.abort(),10000);
@@ -2032,7 +2134,7 @@ async function loadCoreData(){
     if(current()){coreBusy=false;coreController=null;coreTimer=setTimeout(loadCoreData,5000);}
   }
 }
-window.addEventListener('pagehide',()=>{ackRequest?.controller.abort();ackRequest=null;sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
+window.addEventListener('pagehide',()=>{writeRequest?.controller.abort();writeRequest=null;sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
 
 
 function startAuthenticatedDashboard() {

@@ -10,7 +10,7 @@ async function boot(data=records){
  const dom=new JSDOM(html,{url:'http://localhost:8501',runScripts:'dangerously',virtualConsole:vc,beforeParse(w){
   w.Headers=Headers;w.AbortController=AbortController;
   w.L={map:()=>chain(),tileLayer:()=>chain(),control:{zoom:()=>chain()},layerGroup:()=>chain(),circle:()=>chain(),circleMarker:(...args)=>{pins.push(args);return chain()},polyline:()=>chain(),latLngBounds:()=>chain()};
-  w.fetch=async(url,opts)=>{const path=String(url).replace('__HEIMDALL_API_URL__','');calls.push({path,opts});if(failure && path===failure.path && failure.status==='network')throw new TypeError('Failed to fetch');if(failure && path===failure.path)return{ok:false,status:failure.status,json:async()=>({})};return {ok:true,status:200,json:async()=>path==='/auth/login'?{access_token:'test-token'}:path==='/auth/me'?{is_active:true,username:'tester'}:structuredClone(data[path]||[])};};
+  w.fetch=async(url,opts)=>{const path=String(url).replace('__HEIMDALL_API_URL__','');calls.push({path,opts});if(failure && path===failure.path && failure.status==='network')throw new w.TypeError('Failed to fetch');if(failure && path===failure.path)return{ok:false,status:failure.status,json:async()=>({})};return {ok:true,status:200,json:async()=>path==='/auth/login'?{access_token:'test-token'}:path==='/auth/me'?{is_active:true,username:'tester'}:structuredClone(data[path]||[])};};
  }});
  const w=dom.window,d=w.document;
  async function login(){d.getElementById('authUsername').value='tester';d.getElementById('authPassword').value='test-password-123';d.getElementById('loginForm').dispatchEvent(new w.Event('submit',{bubbles:true,cancelable:true}));await wait();}
@@ -161,6 +161,63 @@ async function boot(data=records){
   const t=await boot();try{await t.login();const base=t.w.fetch;t.w.fetch=async(url,opts)=>opts?.method==='PATCH'?{ok:true,status:200,json:async()=>({event_id:999,status:'Resolved'})}:base(url,opts);
    t.d.querySelector('[data-t="drawer"]').click();t.d.querySelector('[data-threat-status="Resolved"]').click();await wait();
    assert.doesNotMatch(t.d.querySelector('#toasts').textContent,/status saved/);assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Pending/);
+  }finally{t.close()}
+ });
+
+ await test('source deletion confirms name and ID, handles empty 204 and persists',async()=>{
+  const data=structuredClone(records);data['/sources'][0].source_id=77;data['/threat-events'][0].source_id=77;
+  const t=await boot(data);try{
+   let prompts=0;t.w.confirm=message=>{prompts++;assert.match(message,/ID 77/);assert.match(message,/Test source/);return true;};
+   const base=t.w.fetch;t.w.fetch=async(url,opts)=>{if(opts?.method==='DELETE'){
+    assert.ok(String(url).endsWith('/sources/77'));assert.equal(opts.headers.Authorization,'Bearer test-token');assert.equal(opts.body,undefined);
+    data['/sources']=[];return{ok:true,status:204,json:()=>{throw new Error('204 must not be parsed')}};
+   }return base(url,opts)};
+   await t.login();assert.equal(t.d.querySelectorAll('#sourceManagement img').length,0);
+   t.d.querySelector('[data-delete-source="77"]').click();await wait();
+   assert.equal(prompts,1);assert.equal(t.d.querySelectorAll('[data-source-row]').length,0);assert.match(t.d.querySelector('#toasts').textContent,/Source #77 deleted/);
+   assert.equal(data['/threat-events'].length,2);assert.equal(data['/alert-logs'].length,1);assert.match(t.d.querySelector('#coreApiRecords').textContent,/2 events/);
+   t.d.querySelector('#demoBtn').click();await wait();assert.equal(t.d.querySelectorAll('[data-source-row]').length,0);
+   t.d.querySelector('#logoutButton').click();await t.login();assert.match(t.d.querySelector('#sourceManagement').textContent,/No active sources/);
+   assert.equal(t.errors.length,0,t.errors.join('\n'));
+  }finally{t.close()}
+ });
+ await test('canceling source deletion sends no DELETE',async()=>{
+  const t=await boot();try{t.w.confirm=()=>false;await t.login();t.d.querySelector('[data-delete-source]').click();await wait();
+   assert.ok(!t.calls.some(c=>c.opts?.method==='DELETE'));assert.equal(t.d.querySelectorAll('[data-source-row]').length,1);
+  }finally{t.close()}
+ });
+ for(const status of [401,404,409,500])await test(`source DELETE HTTP ${status} never shows false success`,async()=>{
+  const t=await boot();try{t.w.confirm=()=>true;await t.login();t.fail('/sources/1',status);t.d.querySelector('[data-delete-source]').click();await wait();
+   assert.doesNotMatch(t.d.querySelector('#toasts').textContent,/Source #1 deleted/);
+   if(status===401)assert.equal(t.d.querySelector('#authGate').hidden,false);else assert.equal(t.d.querySelectorAll('[data-source-row]').length,1);
+  }finally{t.close()}
+ });
+ await test('source deletion blocks duplicate writes and ignores response after logout',async()=>{
+  const t=await boot();try{t.w.confirm=()=>true;await t.login();const base=t.w.fetch;let release,count=0;
+   t.w.fetch=async(url,opts)=>{if(opts?.method==='DELETE'){count++;await new Promise(r=>release=r);return{ok:true,status:204};}return base(url,opts)};
+   t.d.querySelector('[data-t="drawer"]').click();const b=t.d.querySelector('[data-delete-source]');b.click();b.click();
+   assert.equal(count,1);assert.equal(t.d.querySelector('[data-ack-alert]').disabled,true);assert.equal(t.d.querySelector('[data-threat-status]').disabled,true);
+   t.d.querySelector('#logoutButton').click();release();await wait();assert.equal(t.d.querySelector('#sourceManagement').textContent,'');assert.equal(t.d.querySelector('#toasts').textContent,'');
+  }finally{t.close()}
+ });
+ await test('stale source read cannot restore confirmed deletion',async()=>{
+  const data=structuredClone(records),t=await boot(data);try{t.w.confirm=()=>true;await t.login();const base=t.w.fetch;let release,hold=true;
+   t.w.fetch=async(url,opts)=>{
+    if(opts?.method==='DELETE'){data['/sources']=[];return{ok:true,status:204};}
+    if(String(url).endsWith('/sources')&&hold){hold=false;const old=structuredClone(data['/sources']);await new Promise(r=>release=r);return{ok:true,status:200,json:async()=>old};}return base(url,opts);
+   };
+   t.d.querySelector('#demoBtn').click();await wait();t.d.querySelector('[data-delete-source]').click();await wait();release();await wait();
+   assert.equal(t.d.querySelectorAll('[data-source-row]').length,0);assert.equal(t.errors.length,0);
+  }finally{t.close()}
+ });
+ await test('unexpected DELETE success status is not treated as confirmed deletion',async()=>{
+  const t=await boot();try{t.w.confirm=()=>true;await t.login();const base=t.w.fetch;t.w.fetch=async(url,opts)=>opts?.method==='DELETE'?{ok:true,status:200}:base(url,opts);
+   t.d.querySelector('[data-delete-source]').click();await wait();assert.equal(t.d.querySelectorAll('[data-source-row]').length,1);assert.doesNotMatch(t.d.querySelector('#toasts').textContent,/Source #1 deleted/);
+  }finally{t.close()}
+ });
+ await test('source DELETE network failure retains source and explains uncertainty',async()=>{
+  const t=await boot();try{t.w.confirm=()=>true;await t.login();t.fail('/sources/1','network');t.d.querySelector('[data-delete-source]').click();await wait();
+   assert.equal(t.d.querySelectorAll('[data-source-row]').length,1);assert.match(t.d.querySelector('#toasts').textContent,/Could not confirm source deletion/);
   }finally{t.close()}
  });
 
