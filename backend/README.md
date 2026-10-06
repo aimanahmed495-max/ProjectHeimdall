@@ -162,6 +162,7 @@ Fields:
 - `source_type`
 - `url`
 - `reliability_score`
+- `deleted_at` (optional)
 
 ### `threat_events`
 
@@ -176,6 +177,8 @@ Fields:
 - `confidence_score`
 - `camera_id` (optional)
 - `status`
+- `corroborated_at` (optional)
+- `deleted_at` (optional)
 
 ### `alert_logs`
 
@@ -189,6 +192,7 @@ Fields:
 - `alert_level`
 - `message`
 - `acknowledged`
+- `deleted_at` (optional)
 
 ### `camera_states`
 
@@ -241,21 +245,32 @@ Passwords are stored only as Argon2 hashes. `deleted_at` supports soft deletion 
 |---|---|---|---|
 | `GET` | `/health` | Public | Verify the API and PostgreSQL connection |
 | `POST` | `/sources` | Bearer token | Store an OSINT source |
-| `GET` | `/sources` | Public | Retrieve OSINT sources |
+| `GET` | `/sources` | Bearer token | Retrieve active OSINT sources |
+| `GET` | `/sources/{source_id}` | Bearer token | Retrieve one active OSINT source |
+| `DELETE` | `/sources/{source_id}` | Bearer token | Soft-delete an OSINT source |
 | `POST` | `/threat-events` | Bearer token | Store a threat event |
-| `GET` | `/threat-events` | Public | Retrieve threat events |
+| `GET` | `/threat-events` | Bearer token | Retrieve active threat events |
+| `GET` | `/threat-events/{event_id}` | Bearer token | Retrieve one active threat event |
+| `PATCH` | `/threat-events/{event_id}` | Bearer token | Update status or corroboration time |
+| `DELETE` | `/threat-events/{event_id}` | Bearer token | Soft-delete a threat event |
 | `POST` | `/alert-logs` | Bearer token | Store an alert for a threat |
-| `GET` | `/alert-logs` | Public | Retrieve alert logs |
+| `GET` | `/alert-logs` | Bearer token | Retrieve active alert logs |
+| `GET` | `/alert-logs/{alert_id}` | Bearer token | Retrieve one active alert log |
+| `PATCH` | `/alert-logs/{alert_id}` | Bearer token | Update an alert’s acknowledgement state |
+| `DELETE` | `/alert-logs/{alert_id}` | Bearer token | Soft-delete an alert log |
 | `POST` | `/camera-states` | Bearer token | Register a camera state |
-| `GET` | `/camera-states` | Public | Retrieve camera states |
-| `GET` | `/camera-states/{camera_id}` | Public | Retrieve one registered camera state |
+| `GET` | `/camera-states` | Bearer token | Retrieve camera states |
+| `GET` | `/camera-states/{camera_id}` | Bearer token | Retrieve one registered camera state |
 | `PUT` | `/camera-states/{camera_id}` | Bearer token | Update a registered camera state |
 | `POST` | `/system-logs` | Bearer token | Store a system log |
-| `GET` | `/system-logs` | Public | Retrieve system logs |
+| `GET` | `/system-logs` | Bearer token | Retrieve system logs |
 | `POST` | `/auth/register` | Public when enabled | Register a user with a hashed password |
 | `POST` | `/auth/login` | Public | Validate credentials and return a JWT |
 | `GET` | `/auth/me` | Bearer token | Retrieve the authenticated user |
+
 Protected requests must include an `Authorization: Bearer <access_token>` header. Missing, malformed, expired, or invalid tokens return HTTP 401.
+
+DELETE operations for OSINT sources, threat events, and alert logs are soft deletions. The database row remains stored with a `deleted_at` timestamp, while normal GET endpoints exclude it. Requests to retrieve or update a soft-deleted record return HTTP 404.
 
 ## Example requests
 
@@ -372,12 +387,10 @@ Apply all migrations:
 (cd backend && alembic upgrade head)
 ```
 
-
-```markdown
-Roll back the latest authentication migration:
+Roll back the latest soft-deletion migration:
 
 ```bash
-(cd backend && alembic downgrade c61901464e7c)
+(cd backend && alembic downgrade fc324d2ad8ad)
 ```
 
 Reapply it:

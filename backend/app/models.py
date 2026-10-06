@@ -76,7 +76,10 @@ class OsintSource(Base):
         Float,
         nullable=False,
     )
-
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     threat_events: Mapped[List["ThreatEvent"]] = relationship(
         back_populates="osint_source",
     )
@@ -134,6 +137,14 @@ class ThreatEvent(Base):
         server_default="Pending",
         index=True,
     )
+    corroborated_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
 
     osint_source: Mapped[Optional["OsintSource"]] = relationship(
         back_populates="threat_events",
@@ -181,7 +192,10 @@ class AlertLog(Base):
         default=False,
         server_default="false",
     )
-
+    deleted_at: Mapped[Optional[datetime]] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
     threat_event: Mapped["ThreatEvent"] = relationship(
         back_populates="alert_logs",
     )

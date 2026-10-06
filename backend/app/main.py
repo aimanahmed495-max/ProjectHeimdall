@@ -72,10 +72,58 @@ def create_source(
     "/sources",
     response_model=List[schemas.OsintSourceRead],
     tags=["OSINT Sources"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_sources(db: Session = Depends(get_db)):
-    statement = select(models.OsintSource).order_by(models.OsintSource.source_id)
+    statement = (
+        select(models.OsintSource)
+        .where(models.OsintSource.deleted_at.is_(None))
+        .order_by(models.OsintSource.source_id)
+    )
     return db.scalars(statement).all()
+
+
+@app.get(
+    "/sources/{source_id}",
+    response_model=schemas.OsintSourceRead,
+    tags=["OSINT Sources"],
+    dependencies=[Depends(get_current_user)],
+)
+def get_source(
+    source_id: int,
+    db: Session = Depends(get_db),
+):
+    source = db.get(models.OsintSource, source_id)
+
+    if source is None or source.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OSINT source not found.",
+        )
+
+    return source
+
+
+@app.delete(
+    "/sources/{source_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["OSINT Sources"],
+    dependencies=[Depends(get_current_user)],
+)
+def delete_source(
+    source_id: int,
+    db: Session = Depends(get_db),
+):
+    source = db.get(models.OsintSource, source_id)
+
+    if source is None or source.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="OSINT source not found.",
+        )
+
+    source.deleted_at = func.now()
+    db.commit()
 
 
 @app.post(
@@ -92,7 +140,7 @@ def create_threat_event(
     if threat_data.source_id is not None:
         source = db.get(models.OsintSource, threat_data.source_id)
 
-        if source is None:
+        if source is None or source.deleted_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="OSINT source not found.",
@@ -124,12 +172,86 @@ def create_threat_event(
     "/threat-events",
     response_model=List[schemas.ThreatEventRead],
     tags=["Threat Events"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_threat_events(db: Session = Depends(get_db)):
-    statement = select(models.ThreatEvent).order_by(
-        models.ThreatEvent.timestamp.desc(),
+    statement = (
+        select(models.ThreatEvent)
+        .where(models.ThreatEvent.deleted_at.is_(None))
+        .order_by(models.ThreatEvent.timestamp.desc())
     )
     return db.scalars(statement).all()
+
+
+@app.get(
+    "/threat-events/{event_id}",
+    response_model=schemas.ThreatEventRead,
+    tags=["Threat Events"],
+    dependencies=[Depends(get_current_user)],
+)
+def get_threat_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+):
+    threat_event = db.get(models.ThreatEvent, event_id)
+
+    if threat_event is None or threat_event.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Threat event not found.",
+        )
+
+    return threat_event
+
+
+@app.patch(
+    "/threat-events/{event_id}",
+    response_model=schemas.ThreatEventRead,
+    tags=["Threat Events"],
+    dependencies=[Depends(get_current_user)],
+)
+def update_threat_event(
+    event_id: int,
+    threat_data: schemas.ThreatEventUpdate,
+    db: Session = Depends(get_db),
+):
+    threat_event = db.get(models.ThreatEvent, event_id)
+
+    if threat_event is None or threat_event.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Threat event not found.",
+        )
+
+    for field, value in threat_data.model_dump(exclude_unset=True).items():
+        setattr(threat_event, field, value)
+
+    db.commit()
+    db.refresh(threat_event)
+
+    return threat_event
+
+
+@app.delete(
+    "/threat-events/{event_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Threat Events"],
+    dependencies=[Depends(get_current_user)],
+)
+def delete_threat_event(
+    event_id: int,
+    db: Session = Depends(get_db),
+):
+    threat_event = db.get(models.ThreatEvent, event_id)
+
+    if threat_event is None or threat_event.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Threat event not found.",
+        )
+
+    threat_event.deleted_at = func.now()
+    db.commit()
 
 
 @app.post(
@@ -145,7 +267,7 @@ def create_alert_log(
 ):
     threat_event = db.get(models.ThreatEvent, alert_data.event_id)
 
-    if threat_event is None:
+    if threat_event is None or threat_event.deleted_at is not None:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Threat event not found.",
@@ -164,12 +286,85 @@ def create_alert_log(
     "/alert-logs",
     response_model=List[schemas.AlertLogRead],
     tags=["Alert Logs"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_alert_logs(db: Session = Depends(get_db)):
-    statement = select(models.AlertLog).order_by(
-        models.AlertLog.alert_time.desc(),
+    statement = (
+        select(models.AlertLog)
+        .where(models.AlertLog.deleted_at.is_(None))
+        .order_by(models.AlertLog.alert_time.desc())
     )
     return db.scalars(statement).all()
+
+
+@app.get(
+    "/alert-logs/{alert_id}",
+    response_model=schemas.AlertLogRead,
+    tags=["Alert Logs"],
+    dependencies=[Depends(get_current_user)],
+)
+def get_alert_log(
+    alert_id: int,
+    db: Session = Depends(get_db),
+):
+    alert_log = db.get(models.AlertLog, alert_id)
+
+    if alert_log is None or alert_log.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert log not found.",
+        )
+
+    return alert_log
+
+
+@app.patch(
+    "/alert-logs/{alert_id}",
+    response_model=schemas.AlertLogRead,
+    tags=["Alert Logs"],
+    dependencies=[Depends(get_current_user)],
+)
+def update_alert_log(
+    alert_id: int,
+    alert_data: schemas.AlertLogUpdate,
+    db: Session = Depends(get_db),
+):
+    alert_log = db.get(models.AlertLog, alert_id)
+
+    if alert_log is None or alert_log.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert log not found.",
+        )
+
+    alert_log.acknowledged = alert_data.acknowledged
+
+    db.commit()
+    db.refresh(alert_log)
+
+    return alert_log
+
+
+@app.delete(
+    "/alert-logs/{alert_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    tags=["Alert Logs"],
+    dependencies=[Depends(get_current_user)],
+)
+def delete_alert_log(
+    alert_id: int,
+    db: Session = Depends(get_db),
+):
+    alert_log = db.get(models.AlertLog, alert_id)
+
+    if alert_log is None or alert_log.deleted_at is not None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Alert log not found.",
+        )
+
+    alert_log.deleted_at = func.now()
+    db.commit()
 
 
 @app.post(
@@ -204,6 +399,7 @@ def create_camera_state(
     "/camera-states",
     response_model=List[schemas.CameraStateRead],
     tags=["Camera States"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_camera_states(db: Session = Depends(get_db)):
     statement = select(models.CameraState).order_by(
@@ -216,6 +412,7 @@ def get_camera_states(db: Session = Depends(get_db)):
     "/camera-states/{camera_id}",
     response_model=schemas.CameraStateRead,
     tags=["Camera States"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_camera_state(
     camera_id: int,
@@ -280,7 +477,7 @@ def create_system_log(
     if log_data.event_id is not None:
         threat_event = db.get(models.ThreatEvent, log_data.event_id)
 
-        if threat_event is None:
+        if threat_event is None or threat_event.deleted_at is not None:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Threat event not found.",
@@ -299,6 +496,7 @@ def create_system_log(
     "/system-logs",
     response_model=List[schemas.SystemLogRead],
     tags=["System Logs"],
+    dependencies=[Depends(get_current_user)],
 )
 def get_system_logs(db: Session = Depends(get_db)):
     statement = select(models.SystemLog).order_by(

@@ -388,3 +388,16 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Verification:** All 22 frontend behavior tests passed locally using Node.js 22 through Docker. Tests covered authentication, registration, logout, session expiry, record rendering, escaped API text, polling, stale-data handling, network recovery, feature visibility, and prevention of late responses repopulating a signed-out dashboard. The suite used simulated API responses and mocked map functionality. The existing Python suite also passed: 5 tests with 1 dependency deprecation warning. Manually stopped and restarted the API to verify the connection warning and automatic recovery. `git diff --check` reported no whitespace errors.
 
 **Remaining work:** Connect and test alert acknowledgment, threat-status updates, source soft-deletion, and camera-state history when the corresponding backend contracts are available. Feature visibility and simulated-response tests do not establish backend authorization or complete end-to-end integration.
+
+
+## 2026-10-05 — Backend CRUD, Soft Deletion, and Protected Reads
+
+**Developer:** Arham Sadid Hossain
+
+**Branch:** `feature/28-backend-crud-security`
+
+**AI assistance:** Reviewed soft-deletion design, authenticated read access, PATCH and DELETE endpoint behavior, Alembic migration safety, integration-test coverage, and documentation consistency; assisted with troubleshooting implementation and validation.
+
+**Human work completed:** Added nullable `deleted_at` fields to OSINT sources, threat events, and alert logs; added `corroborated_at` support to threat events; protected resource GET endpoints with JWT authentication; added authenticated record-by-ID, status update, alert acknowledgement, and soft-delete endpoints; prevented deleted records from appearing in normal reads or receiving new references; added an Alembic migration, automated tests, and updated database documentation.
+
+**Verification:** Successfully tested the Alembic upgrade and downgrade, confirmed no pending schema operations, passed all 71 backend tests with 96.91% coverage, and passed Ruff, compilation, and whitespace checks.

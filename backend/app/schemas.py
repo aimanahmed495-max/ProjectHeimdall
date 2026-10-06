@@ -42,6 +42,7 @@ class TokenResponse(BaseModel):
 
 class OsintSourceRead(OsintSourceCreate):
     source_id: int
+    deleted_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -69,9 +70,28 @@ class ThreatEventCreate(BaseModel):
         return self
 
 
+class ThreatEventUpdate(BaseModel):
+    status: Optional[str] = Field(default=None, min_length=1, max_length=30)
+    corroborated_at: Optional[datetime] = None
+
+    @model_validator(mode="after")
+    def require_update_field(self) -> "ThreatEventUpdate":
+        """Require at least one threat-event field to update."""
+
+        if not self.model_fields_set:
+            raise ValueError("At least one threat-event field must be provided.")
+
+        if "status" in self.model_fields_set and self.status is None:
+            raise ValueError("status cannot be null.")
+
+        return self
+
+
 class ThreatEventRead(ThreatEventCreate):
     event_id: int
     timestamp: datetime
+    corroborated_at: Optional[datetime] = None
+    deleted_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -83,9 +103,14 @@ class AlertLogCreate(BaseModel):
     acknowledged: bool = False
 
 
+class AlertLogUpdate(BaseModel):
+    acknowledged: bool
+
+
 class AlertLogRead(AlertLogCreate):
     alert_id: int
     alert_time: datetime
+    deleted_at: Optional[datetime] = None
 
     model_config = ConfigDict(from_attributes=True)
 
