@@ -401,3 +401,15 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Added nullable `deleted_at` fields to OSINT sources, threat events, and alert logs; added `corroborated_at` support to threat events; protected resource GET endpoints with JWT authentication; added authenticated record-by-ID, status update, alert acknowledgement, and soft-delete endpoints; prevented deleted records from appearing in normal reads or receiving new references; added an Alembic migration, automated tests, and updated database documentation.
 
 **Verification:** Successfully tested the Alembic upgrade and downgrade, confirmed no pending schema operations, passed all 71 backend tests with 96.91% coverage, and passed Ruff, compilation, and whitespace checks.
+
+## 2026-10-06 — Frontend Alert Acknowledgment Integration
+
+**Developer:** Zareer Khan
+
+**Branch:** `feature/27-dashboard-actions`
+
+**AI assistance:** ChatGPT/Codex generated additional automated tests, explained authenticated PATCH requests, and guided integration and troubleshooting.
+
+**Human work completed:** Applied the changes locally; connected individual alert acknowledgment to PATCH /alert-logs/{alert_id}; rebuilt the frontend container; tested the browser workflow; and ran the expanded automated test suite.
+
+**Verification:** All 30 Node.js/jsdom frontend tests passed using mocked API responses, including eight new tests covering acknowledgment success, HTTP errors, duplicate clicks, logout during requests, multiple alerts, and stale responses. Manual browser testing against the local backend passed, and git diff --check reported no whitespace errors.

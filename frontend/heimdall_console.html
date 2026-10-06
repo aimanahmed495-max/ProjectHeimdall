@@ -1035,6 +1035,7 @@ body.auth-locked > #app {
       <h6>RELATED SIGNALS</h6>
       <div class="related" id="dRelated"></div>
     </div>
+    <div class="dsec" id="alertActions" hidden></div>
     <div class="dsec">
       <h6>ANALYST NOTE</h6>
       <textarea class="input" id="dNote" placeholder="Session-only note — cleared on sign-out" style="min-height:64px;font-size:12.5px"></textarea>
@@ -1092,7 +1093,7 @@ const state = {
 const API_BASE = '__HEIMDALL_API_URL__';
 /* Enable only after the corresponding workflow is integrated and tested. */
 const FEATURES = Object.freeze({
-  alertAcknowledgment: false,
+  alertAcknowledgment: true,
   threatStatusUpdates: false,
   sourceDeletion: false,
   cameraHistory: false,
@@ -1102,16 +1103,13 @@ const FEATURES = Object.freeze({
 function installFeatureVisibility() {
   const rules = [];
 
-  if (!FEATURES.alertAcknowledgment) {
-    rules.push(`
-      #ackAll,
-      #feedClear,
-      #dAck,
-      button[title="Backend acknowledgment updates are not available"] {
-        display: none !important;
-      }
-    `);
-  }
+  // Bulk and legacy controls remain unavailable. Use per-alert controls in details.
+  rules.push(`
+    #ackAll, #feedClear, #dAck,
+    button[title="Backend acknowledgment updates are not available"] {
+      display: none !important;
+    }
+  `);
 
   if (!FEATURES.threatStatusUpdates) {
     rules.push(`
@@ -1410,6 +1408,7 @@ function render(){
   drawSignals(list); drawFences();
   renderCounts(list); renderQueue(list); renderHist(list); renderCards(list); renderChips(); renderLayers();
   renderFeed(list); renderReasoning(); renderCams(); renderIntel(list); renderHistory();
+  renderAlertActions();
 }
 
 /* ---------- alert history ---------- */
@@ -1722,6 +1721,7 @@ function mapCoreRecords(){
   if(state.selected && !signals.some(s=>s.id===state.selected)){state.selected=null;$('#drawer').dataset.open='0';$('#drawer').setAttribute('aria-hidden','true');}
 }
 function endCoreSession(message='Signed out successfully.'){
+  ackRequest?.controller.abort();ackRequest=null;
   sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();coreBusy=false;
   authState.token=null;authState.user=null;backend.connected=false;lastIngest=null;
   for(const key of Object.keys(coreData))coreData[key]=[];
@@ -1754,12 +1754,122 @@ function coreApiError(status) {
   return error;
 }
 
+/* Acknowledge individual backend alerts. */
+let ackRequest = null;
+let coreReadVersion = 0;
+
+function renderAlertActions() {
+  const box = document.getElementById('alertActions');
+  box.replaceChildren();
+  box.hidden = !FEATURES.alertAcknowledgment;
+  if (box.hidden || !authState.token || !state.selected) return;
+  const event = signals.find(s => s.id === state.selected);
+  if (!event) return;
+  const heading = document.createElement('h6');
+  heading.textContent = 'ALERT ACKNOWLEDGMENT';
+  box.appendChild(heading);
+  const status = document.createElement('p');
+  status.textContent = `Threat status: ${event.raw.status}. Acknowledgment records review; it does not resolve the threat.`;
+  box.appendChild(status);
+  if (!event.alerts.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'This event has no alert records to acknowledge.';
+    box.appendChild(empty);
+  }
+  for (const alert of event.alerts) {
+    const row = document.createElement('div');
+    row.style.marginBottom = '12px';
+    const label = document.createElement('p');
+    label.textContent = `Alert #${alert.alert_id}: ${alert.message}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.dataset.ackAlert = String(alert.alert_id);
+    button.disabled = alert.acknowledged || !!ackRequest || !backend.connected;
+    button.textContent = alert.acknowledged ? 'Acknowledged'
+      : ackRequest?.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
+    button.addEventListener('click', () => acknowledgeAlert(alert.alert_id));
+    row.append(label, button);
+    box.appendChild(row);
+  }
+}
+
+async function acknowledgeAlert(alertId) {
+  if (!FEATURES.alertAcknowledgment || !authState.token || ackRequest) return;
+  const id = String(alertId);
+  const alert = coreData.alerts.find(a => String(a.alert_id) === id);
+  if (!alert || alert.acknowledged || !backend.connected) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller};
+  ackRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/alert-logs/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({acknowledged: true}),
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    const updated = await response.json();
+    if (!current()) return;
+    if (String(updated.alert_id) !== id ||
+        String(updated.event_id) !== String(alert.event_id) ||
+        updated.acknowledged !== true) {
+      throw new Error('The backend did not return the expected acknowledgment. Refresh to check its saved state.');
+    }
+    coreData.alerts = coreData.alerts.map(a => String(a.alert_id) === id ? updated : a);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Alert #${id} acknowledged and saved.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Acknowledgment timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm acknowledgment. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (ackRequest === request) {
+      ackRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
 async function loadCoreData(){
-  if(!authState.token || coreBusy)return;
+  if(!authState.token || coreBusy || ackRequest)return;
   clearTimeout(coreTimer);coreBusy=true;
   const token=authState.token,epoch=sessionEpoch,controller=new AbortController();coreController=controller;
   const timeout=setTimeout(()=>controller.abort(),10000);
-  const current=()=>epoch===sessionEpoch && token===authState.token;
+  const readVersion=coreReadVersion;
+  const current=()=>epoch===sessionEpoch && token===authState.token && readVersion===coreReadVersion;
     async function get(path) {
     let response;
 
@@ -1825,7 +1935,7 @@ async function loadCoreData(){
     if(current()){coreBusy=false;coreController=null;coreTimer=setTimeout(loadCoreData,5000);}
   }
 }
-window.addEventListener('pagehide',()=>{sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
+window.addEventListener('pagehide',()=>{ackRequest?.controller.abort();ackRequest=null;sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
 
 
 function startAuthenticatedDashboard() {
