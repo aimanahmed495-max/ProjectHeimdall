@@ -1035,7 +1035,8 @@ body.auth-locked > #app {
       <h6>RELATED SIGNALS</h6>
       <div class="related" id="dRelated"></div>
     </div>
-    <div class="dsec" id="alertActions" hidden></div>
+    <div class="dsec" id="threatActions" hidden></div>
+<div class="dsec" id="alertActions" hidden></div>
     <div class="dsec">
       <h6>ANALYST NOTE</h6>
       <textarea class="input" id="dNote" placeholder="Session-only note — cleared on sign-out" style="min-height:64px;font-size:12.5px"></textarea>
@@ -1094,7 +1095,7 @@ const API_BASE = '__HEIMDALL_API_URL__';
 /* Enable only after the corresponding workflow is integrated and tested. */
 const FEATURES = Object.freeze({
   alertAcknowledgment: true,
-  threatStatusUpdates: false,
+  threatStatusUpdates: true,
   sourceDeletion: false,
   cameraHistory: false,
   cameraControls: false
@@ -1111,16 +1112,15 @@ function installFeatureVisibility() {
     }
   `);
 
-  if (!FEATURES.threatStatusUpdates) {
-    rules.push(`
+  // Legacy escalation/dismissal controls remain unavailable.
+  rules.push(`
       #dEsc,
       #dDismiss,
       #queue .acts button:nth-child(2),
       #queue .acts button:nth-child(3) {
         display: none !important;
       }
-    `);
-  }
+  `);
 
   if (!FEATURES.cameraControls) {
     rules.push(`
@@ -1285,7 +1285,7 @@ const VALS = {
   severity:[['0','unrated'],['3','critical'],['2','elevated'],['1','routine']],
   category:Object.entries(CATS).map(([k,v])=>[k,v.label]),
   confidence:[['50','50%'],['60','60%'],['70','70%'],['80','80%'],['90','90%']],
-  status:[['Pending','Pending'],['new','new'],['ack','acknowledged'],['escalated','escalated'],['dismissed','dismissed']],
+  status:[['Pending','Pending'],['Resolved','Resolved']],
   source:[]
 };
 function refreshSourceVals(){ VALS.source = [...new Set(signals.map(s=>s.source))].map(s=>[s,s]); }
@@ -1710,7 +1710,7 @@ function mapCoreRecords(){
       cat:event.source_id!=null?'report':'camera',lat:null,lng:null,ts:parseTime(event.timestamp),
       title:alerts[0]?.message||`Detected object: ${event.object_class||'Unspecified'}`,
       entity:String(event.object_class||'Backend event'),source:source?.source_name||(event.source_id!=null?'Source '+event.source_id:'Vision'),
-      conf:confidence,cameraId:event.camera_id,status:alerts.length && alerts.every(a=>a.acknowledged)?'ack':String(event.status||'Pending'),
+      conf:confidence,cameraId:event.camera_id,status:String(event.status||'Pending'),
       cluster:'event-'+id,watch:old?.watch||false,note:old?.note||''};
   });
   // The current API has no latitude/longitude fields; do not invent map pins.
@@ -1759,6 +1759,7 @@ let ackRequest = null;
 let coreReadVersion = 0;
 
 function renderAlertActions() {
+  renderThreatActions();
   const box = document.getElementById('alertActions');
   box.replaceChildren();
   box.hidden = !FEATURES.alertAcknowledgment;
@@ -1787,10 +1788,39 @@ function renderAlertActions() {
     button.dataset.ackAlert = String(alert.alert_id);
     button.disabled = alert.acknowledged || !!ackRequest || !backend.connected;
     button.textContent = alert.acknowledged ? 'Acknowledged'
-      : ackRequest?.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
+      : ackRequest?.kind === 'alert' && ackRequest.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
     button.addEventListener('click', () => acknowledgeAlert(alert.alert_id));
     row.append(label, button);
     box.appendChild(row);
+  }
+}
+
+function renderThreatActions() {
+  const box = document.getElementById('threatActions');
+  box.replaceChildren();
+  box.hidden = !FEATURES.threatStatusUpdates;
+  if (box.hidden || !authState.token || !state.selected) return;
+  const event = signals.find(s => s.id === state.selected);
+  if (!event) return;
+  const heading = document.createElement('h6');
+  heading.textContent = 'THREAT STATUS';
+  const status = document.createElement('p');
+  status.id = 'currentThreatStatus';
+  status.textContent = `Current status: ${event.raw.status}`;
+  const help = document.createElement('p');
+  help.textContent = 'Update the threat workflow status. Associated alerts retain their acknowledgment state.';
+  box.append(heading, status, help);
+  for (const [value, label] of [['Resolved', 'Mark resolved'], ['Pending', 'Reopen as pending']]) {
+    if (event.raw.status === value) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.style.marginRight = '8px';
+    button.dataset.threatStatus = value;
+    button.disabled = !!ackRequest || !backend.connected;
+    button.textContent = ackRequest?.kind === 'threat' && ackRequest.id === event.backendId ? 'Saving…' : label;
+    button.addEventListener('click', () => updateThreatStatus(event.backendId, value));
+    box.appendChild(button);
   }
 }
 
@@ -1801,7 +1831,7 @@ async function acknowledgeAlert(alertId) {
   if (!alert || alert.acknowledged || !backend.connected) return;
   const token = authState.token, epoch = sessionEpoch;
   const controller = new AbortController();
-  const request = {id, controller};
+  const request = {id, controller, kind: 'alert'};
   ackRequest = request;
   const current = () => epoch === sessionEpoch && token === authState.token;
 
@@ -1847,6 +1877,73 @@ async function acknowledgeAlert(alertId) {
       ? 'Acknowledgment timed out. Its saved state is uncertain; refresh before retrying.'
       : error instanceof TypeError || error instanceof SyntaxError
         ? 'Could not confirm acknowledgment. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (ackRequest === request) {
+      ackRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
+async function updateThreatStatus(eventId, nextStatus) {
+  if (!FEATURES.threatStatusUpdates || !authState.token || ackRequest) return;
+  const id = String(eventId);
+  const event = coreData.events.find(e => String(e.event_id) === id);
+  if (!event || !['Pending', 'Resolved'].includes(nextStatus) || event.status === nextStatus || !backend.connected) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller, kind: 'threat'};
+  ackRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/threat-events/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({status: nextStatus}),
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    const updated = await response.json();
+    if (!current()) return;
+    if (String(updated.event_id) !== id || updated.status !== nextStatus) {
+      throw new Error('The backend did not return the expected threat status. Refresh to check its saved state.');
+    }
+    coreData.events = coreData.events.map(e => String(e.event_id) === id ? updated : e);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Threat #${id} status saved: ${nextStatus}.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Threat status update timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm threat status. Check the connection and refresh before retrying.'
         : error.message;
     toast(message);
   } finally {

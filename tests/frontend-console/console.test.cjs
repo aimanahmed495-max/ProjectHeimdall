@@ -110,5 +110,59 @@ async function boot(data=records){
   }finally{t.close()}
  });
 
+ await test('threat status PATCH uses event ID and preserves alert acknowledgment',async()=>{
+  const data=structuredClone(records);data['/alert-logs'][0].alert_id=77;data['/alert-logs'][0].acknowledged=true;
+  const t=await boot(data);try{
+   const base=t.w.fetch;t.w.fetch=async(url,opts)=>{if(opts?.method==='PATCH'){
+    assert.ok(String(url).endsWith('/threat-events/1'));assert.equal(opts.headers.Authorization,'Bearer test-token');
+    const body=JSON.parse(opts.body);assert.deepEqual(Object.keys(body),['status']);
+    data['/threat-events'][0].status=body.status;return{ok:true,status:200,json:async()=>structuredClone(data['/threat-events'][0])};
+   }return base(url,opts)};
+   await t.login();t.d.querySelector('[data-t="drawer"]').click();
+   assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Pending/);
+   t.d.querySelector('[data-threat-status="Resolved"]').click();await wait();
+   assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Resolved/);
+   assert.equal(t.d.querySelector('[data-ack-alert="77"]').textContent,'Acknowledged');
+   t.d.querySelector('#demoBtn').click();await wait();assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Resolved/);
+   t.d.querySelector('#logoutButton').click();await t.login();t.d.querySelector('[data-t="drawer"]').click();
+   assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Resolved/);
+   t.d.querySelector('[data-threat-status="Pending"]').click();await wait();
+   assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Pending/);assert.equal(data['/alert-logs'][0].acknowledged,true);
+   assert.equal(t.errors.length,0,t.errors.join('\n'));
+  }finally{t.close()}
+ });
+ for(const status of [401,404,409,500])await test(`threat status HTTP ${status} never shows false success`,async()=>{
+  const t=await boot();try{await t.login();t.fail('/threat-events/1',status);t.d.querySelector('[data-t="drawer"]').click();
+   t.d.querySelector('[data-threat-status="Resolved"]').click();await wait();assert.doesNotMatch(t.d.querySelector('#toasts').textContent,/status saved/);
+   if(status===401)assert.equal(t.d.querySelector('#authGate').hidden,false);
+   else assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Pending/);
+  }finally{t.close()}
+ });
+ await test('threat write blocks duplicate and concurrent ACK, ignores late logout response',async()=>{
+  const t=await boot();try{await t.login();const base=t.w.fetch;let release,count=0;
+   t.w.fetch=async(url,opts)=>{if(opts?.method==='PATCH'){count++;await new Promise(r=>release=r);return{ok:true,status:200,json:async()=>({...records['/threat-events'][0],status:'Resolved'})};}return base(url,opts)};
+   t.d.querySelector('[data-t="drawer"]').click();const button=t.d.querySelector('[data-threat-status="Resolved"]');button.click();button.click();
+   assert.equal(t.d.querySelector('[data-ack-alert]').disabled,true);t.d.querySelector('[data-ack-alert]').click();assert.equal(count,1);
+   t.d.querySelector('#logoutButton').click();release();await wait();assert.equal(t.d.querySelector('#threatActions').textContent,'');assert.equal(t.d.querySelector('#toasts').textContent,'');
+  }finally{t.close()}
+ });
+ await test('stale reads cannot undo confirmed threat status',async()=>{
+  const data=structuredClone(records),t=await boot(data);try{
+   await t.login();t.d.querySelector('[data-t="drawer"]').click();const base=t.w.fetch;let release,hold=true;
+   t.w.fetch=async(url,opts)=>{
+    if(opts?.method==='PATCH'){data['/threat-events'][0].status='Resolved';return{ok:true,status:200,json:async()=>structuredClone(data['/threat-events'][0])};}
+    if(String(url).endsWith('/threat-events')&&hold){hold=false;const old=structuredClone(data['/threat-events']);await new Promise(r=>release=r);return{ok:true,status:200,json:async()=>old};}return base(url,opts);
+   };
+   t.d.querySelector('#demoBtn').click();await wait();t.d.querySelector('[data-threat-status="Resolved"]').click();await wait();release();await wait();
+   assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Resolved/);assert.equal(data['/alert-logs'][0].acknowledged,false);
+  }finally{t.close()}
+ });
+ await test('invalid threat response never shows success',async()=>{
+  const t=await boot();try{await t.login();const base=t.w.fetch;t.w.fetch=async(url,opts)=>opts?.method==='PATCH'?{ok:true,status:200,json:async()=>({event_id:999,status:'Resolved'})}:base(url,opts);
+   t.d.querySelector('[data-t="drawer"]').click();t.d.querySelector('[data-threat-status="Resolved"]').click();await wait();
+   assert.doesNotMatch(t.d.querySelector('#toasts').textContent,/status saved/);assert.match(t.d.querySelector('#currentThreatStatus').textContent,/Pending/);
+  }finally{t.close()}
+ });
+
  console.log(`${passed} tests passed`);
 })().catch(e=>{console.error(e);process.exitCode=1});
