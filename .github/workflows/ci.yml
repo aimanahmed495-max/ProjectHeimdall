@@ -30,9 +30,11 @@ jobs:
         run: |
           pip install -r backend/requirements.txt
           pip install -r backend/requirements-dev.txt
-          pip install ruff
+          pip install ruff complexipy pip-audit
       - name: Lint with ruff
         run: ruff check backend/
+      - name: Check cognitive complexity
+        run: complexipy backend --max-complexity-allowed 15
       - name: Run database migrations
         working-directory: backend
         env:
@@ -58,6 +60,20 @@ jobs:
           --cov=backend.app
           --cov-report=term-missing
           --cov-fail-under=60
+      - name: Audit backend dependencies
+        # requirements-dev.txt includes requirements.txt via -r.
+        # Ignored until their major-version upgrades are done separately:
+        #   PYSEC-2026-1845: fix needs pytest 9 (pinned 8.4.2, dev/test only).
+        #   PYSEC-2026-161, -248, -249, -2280, -2281: fixes need starlette 1.x
+        #   (0.52.1 is pulled in by fastapi==0.128.8).
+        run: >
+          pip-audit -r backend/requirements-dev.txt
+          --ignore-vuln PYSEC-2026-1845
+          --ignore-vuln PYSEC-2026-161
+          --ignore-vuln PYSEC-2026-248
+          --ignore-vuln PYSEC-2026-249
+          --ignore-vuln PYSEC-2026-2280
+          --ignore-vuln PYSEC-2026-2281
 
   osint:
     runs-on: ubuntu-latest
@@ -69,11 +85,15 @@ jobs:
       - name: Install OSINT dependencies
         run: |
           pip install -r ai-brain/requirements.txt
-          pip install pytest ruff
+          pip install pytest ruff complexipy pip-audit
       - name: Lint OSINT module
-        run: ruff check ai-brain/ --select E,F,I
+        run: ruff check ai-brain/
+      - name: Check OSINT cognitive complexity
+        run: complexipy ai-brain --max-complexity-allowed 15
       - name: Run OSINT tests
         run: pytest ai-brain/tests -q
+      - name: Audit OSINT dependencies
+        run: pip-audit -r ai-brain/requirements.txt
 
   frontend:
     runs-on: ubuntu-latest
@@ -111,3 +131,28 @@ jobs:
         uses: trufflesecurity/trufflehog@main
         with:
           extra_args: --only-verified
+
+  vision:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install vision dependencies
+        run: |
+          pip install -r vision/requirements.txt
+          pip install pytest ruff complexipy pip-audit
+      - name: Lint vision module
+        run: ruff check vision/
+      - name: Check vision cognitive complexity
+        run: complexipy vision --max-complexity-allowed 15
+      - name: Run vision tests
+        run: |
+          if [ ! -d vision/tests ]; then
+            echo "::notice title=Vision tests skipped::vision/tests does not exist yet, so pytest was not run."
+            exit 0
+          fi
+          pytest vision/tests -q
+      - name: Audit vision dependencies
+        run: pip-audit -r vision/requirements.txt
