@@ -7,9 +7,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from . import models, schemas
-from .auth import get_current_user, router as auth_router
+from .auth import get_current_user
+from .auth import router as auth_router
 from .database import get_db
-
 
 app = FastAPI(
     title="Heimdall Core API",
