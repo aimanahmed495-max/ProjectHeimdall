@@ -15,7 +15,6 @@ from vision_client import (
     HeimdallVisionClient,
 )
 
-
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 

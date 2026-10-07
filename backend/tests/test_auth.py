@@ -4,7 +4,6 @@ from sqlalchemy import select
 from backend.app import models
 from backend.app.security import verify_password
 
-
 VALID_USER = {
     "username": "heimdall.operator",
     "password": "SecurePassword123!",
