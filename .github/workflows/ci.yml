@@ -86,6 +86,20 @@ jobs:
         run: pip install -r frontend/requirements.txt
       - name: Run frontend/dashboard tests
         run: pytest tests/
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/frontend-console/package-lock.json
+
+      - name: Install frontend console test dependencies
+        working-directory: tests/frontend-console
+        run: npm ci --no-audit --no-fund
+
+      - name: Run frontend console tests
+        working-directory: tests/frontend-console
+        run: npm test
 
   secret-scan:
     runs-on: ubuntu-latest

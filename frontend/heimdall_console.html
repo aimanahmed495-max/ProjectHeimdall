@@ -969,6 +969,7 @@ body.auth-locked > #app {
       <h2>Analytics</h2>
       <span class="kick" id="intelWindow"></span>
     </div>
+    <section id="sourceManagement" class="dsec" aria-label="Source management" hidden style="margin-bottom:24px"></section>
     <div class="cards" style="margin-bottom:var(--space-6);border-radius:var(--radius-md);overflow:hidden;border:1px solid var(--line)">
       <div class="kcard">
         <span class="kick">SIGNAL VOLUME · 6H</span>
@@ -1035,6 +1036,8 @@ body.auth-locked > #app {
       <h6>RELATED SIGNALS</h6>
       <div class="related" id="dRelated"></div>
     </div>
+    <div class="dsec" id="threatActions" hidden></div>
+<div class="dsec" id="alertActions" hidden></div>
     <div class="dsec">
       <h6>ANALYST NOTE</h6>
       <textarea class="input" id="dNote" placeholder="Session-only note — cleared on sign-out" style="min-height:64px;font-size:12.5px"></textarea>
@@ -1090,6 +1093,52 @@ const state = {
 
 /* ---------- FastAPI + WebSocket integration ---------- */
 const API_BASE = '__HEIMDALL_API_URL__';
+/* Enable only after the corresponding workflow is integrated and tested. */
+const FEATURES = Object.freeze({
+  alertAcknowledgment: true,
+  threatStatusUpdates: true,
+  sourceDeletion: true,
+  cameraHistory: false,
+  cameraControls: false
+});
+
+function installFeatureVisibility() {
+  const rules = [];
+
+  // Bulk and legacy controls remain unavailable. Use per-alert controls in details.
+  rules.push(`
+    #ackAll, #feedClear, #dAck,
+    button[title="Backend acknowledgment updates are not available"] {
+      display: none !important;
+    }
+  `);
+
+  // Legacy escalation/dismissal controls remain unavailable.
+  rules.push(`
+      #dEsc,
+      #dDismiss,
+      #queue .acts button:nth-child(2),
+      #queue .acts button:nth-child(3) {
+        display: none !important;
+      }
+  `);
+
+  if (!FEATURES.cameraControls) {
+    rules.push(`
+      #camAll,
+      #camGrid button[title="Camera hardware controls are not connected"] {
+        display: none !important;
+      }
+    `);
+  }
+
+  const style = document.createElement('style');
+  style.id = 'heimdall-feature-visibility';
+  style.textContent = rules.join('\n');
+  document.head.appendChild(style);
+}
+
+installFeatureVisibility();
 const backend = {connected:false, mode:null, retry:null};
 
 /* Authentication helpers */
@@ -1237,7 +1286,7 @@ const VALS = {
   severity:[['0','unrated'],['3','critical'],['2','elevated'],['1','routine']],
   category:Object.entries(CATS).map(([k,v])=>[k,v.label]),
   confidence:[['50','50%'],['60','60%'],['70','70%'],['80','80%'],['90','90%']],
-  status:[['Pending','Pending'],['new','new'],['ack','acknowledged'],['escalated','escalated'],['dismissed','dismissed']],
+  status:[['Pending','Pending'],['Resolved','Resolved']],
   source:[]
 };
 function refreshSourceVals(){ VALS.source = [...new Set(signals.map(s=>s.source))].map(s=>[s,s]); }
@@ -1360,6 +1409,7 @@ function render(){
   drawSignals(list); drawFences();
   renderCounts(list); renderQueue(list); renderHist(list); renderCards(list); renderChips(); renderLayers();
   renderFeed(list); renderReasoning(); renderCams(); renderIntel(list); renderHistory();
+  renderAlertActions();
 }
 
 /* ---------- alert history ---------- */
@@ -1661,7 +1711,7 @@ function mapCoreRecords(){
       cat:event.source_id!=null?'report':'camera',lat:null,lng:null,ts:parseTime(event.timestamp),
       title:alerts[0]?.message||`Detected object: ${event.object_class||'Unspecified'}`,
       entity:String(event.object_class||'Backend event'),source:source?.source_name||(event.source_id!=null?'Source '+event.source_id:'Vision'),
-      conf:confidence,cameraId:event.camera_id,status:alerts.length && alerts.every(a=>a.acknowledged)?'ack':String(event.status||'Pending'),
+      conf:confidence,cameraId:event.camera_id,status:String(event.status||'Pending'),
       cluster:'event-'+id,watch:old?.watch||false,note:old?.note||''};
   });
   // The current API has no latitude/longitude fields; do not invent map pins.
@@ -1672,6 +1722,7 @@ function mapCoreRecords(){
   if(state.selected && !signals.some(s=>s.id===state.selected)){state.selected=null;$('#drawer').dataset.open='0';$('#drawer').setAttribute('aria-hidden','true');}
 }
 function endCoreSession(message='Signed out successfully.'){
+  writeRequest?.controller.abort();writeRequest=null;
   sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();coreBusy=false;
   authState.token=null;authState.user=null;backend.connected=false;lastIngest=null;
   for(const key of Object.keys(coreData))coreData[key]=[];
@@ -1681,16 +1732,382 @@ function endCoreSession(message='Signed out successfully.'){
   $('#coreApiStatus').textContent='Signed out';$('#coreApiRecords').textContent='—';
   setAuthMessage(message);render();$('#authUsername').focus();
 }
+
+function coreApiError(status) {
+  const messages = {
+    400: 'The request could not be processed. Check the entered values.',
+    401: 'Your session has expired or is invalid. Please sign in again.',
+    403: 'You do not have permission to perform this action.',
+    404: 'The requested record or service could not be found. Refresh and try again.',
+    409: 'This request conflicts with the current record. Refresh and try again.',
+    422: 'Some values are invalid. Check the form and try again.',
+    429: 'Too many requests. Please wait before trying again.'
+  };
+
+  const message = messages[status] || (
+    status >= 500
+      ? 'The backend is temporarily unavailable. Please try again shortly.'
+      : 'The request failed. Please try again.'
+  );
+
+  const error = new Error(message);
+  error.status = status;
+  return error;
+}
+
+/* Acknowledge individual backend alerts. */
+let writeRequest = null;
+let coreReadVersion = 0;
+
+function renderAlertActions() {
+  renderSourceManagement();
+  renderThreatActions();
+  const box = document.getElementById('alertActions');
+  box.replaceChildren();
+  box.hidden = !FEATURES.alertAcknowledgment;
+  if (box.hidden || !authState.token || !state.selected) return;
+  const event = signals.find(s => s.id === state.selected);
+  if (!event) return;
+  const heading = document.createElement('h6');
+  heading.textContent = 'ALERT ACKNOWLEDGMENT';
+  box.appendChild(heading);
+  const status = document.createElement('p');
+  status.textContent = `Threat status: ${event.raw.status}. Acknowledgment records review; it does not resolve the threat.`;
+  box.appendChild(status);
+  if (!event.alerts.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'This event has no alert records to acknowledge.';
+    box.appendChild(empty);
+  }
+  for (const alert of event.alerts) {
+    const row = document.createElement('div');
+    row.style.marginBottom = '12px';
+    const label = document.createElement('p');
+    label.textContent = `Alert #${alert.alert_id}: ${alert.message}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.dataset.ackAlert = String(alert.alert_id);
+    button.disabled = alert.acknowledged || !!writeRequest || !backend.connected;
+    button.textContent = alert.acknowledged ? 'Acknowledged'
+      : writeRequest?.kind === 'alert' && writeRequest.id === String(alert.alert_id) ? 'Saving…' : 'Acknowledge';
+    button.addEventListener('click', () => acknowledgeAlert(alert.alert_id));
+    row.append(label, button);
+    box.appendChild(row);
+  }
+}
+
+function renderThreatActions() {
+  const box = document.getElementById('threatActions');
+  box.replaceChildren();
+  box.hidden = !FEATURES.threatStatusUpdates;
+  if (box.hidden || !authState.token || !state.selected) return;
+  const event = signals.find(s => s.id === state.selected);
+  if (!event) return;
+  const heading = document.createElement('h6');
+  heading.textContent = 'THREAT STATUS';
+  const status = document.createElement('p');
+  status.id = 'currentThreatStatus';
+  status.textContent = `Current status: ${event.raw.status}`;
+  const help = document.createElement('p');
+  help.textContent = 'Update the threat workflow status. Associated alerts retain their acknowledgment state.';
+  box.append(heading, status, help);
+  for (const [value, label] of [['Resolved', 'Mark resolved'], ['Pending', 'Reopen as pending']]) {
+    if (event.raw.status === value) continue;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.style.marginRight = '8px';
+    button.dataset.threatStatus = value;
+    button.disabled = !!writeRequest || !backend.connected;
+    button.textContent = writeRequest?.kind === 'threat' && writeRequest.id === event.backendId ? 'Saving…' : label;
+    button.addEventListener('click', () => updateThreatStatus(event.backendId, value));
+    box.appendChild(button);
+  }
+}
+
+async function acknowledgeAlert(alertId) {
+  if (!FEATURES.alertAcknowledgment || !authState.token || writeRequest) return;
+  const id = String(alertId);
+  const alert = coreData.alerts.find(a => String(a.alert_id) === id);
+  if (!alert || alert.acknowledged || !backend.connected) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller, kind: 'alert'};
+  writeRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/alert-logs/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({acknowledged: true}),
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    const updated = await response.json();
+    if (!current()) return;
+    if (String(updated.alert_id) !== id ||
+        String(updated.event_id) !== String(alert.event_id) ||
+        updated.acknowledged !== true) {
+      throw new Error('The backend did not return the expected acknowledgment. Refresh to check its saved state.');
+    }
+    coreData.alerts = coreData.alerts.map(a => String(a.alert_id) === id ? updated : a);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Alert #${id} acknowledged and saved.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Acknowledgment timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm acknowledgment. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (writeRequest === request) {
+      writeRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
+async function updateThreatStatus(eventId, nextStatus) {
+  if (!FEATURES.threatStatusUpdates || !authState.token || writeRequest) return;
+  const id = String(eventId);
+  const event = coreData.events.find(e => String(e.event_id) === id);
+  if (!event || !['Pending', 'Resolved'].includes(nextStatus) || event.status === nextStatus || !backend.connected) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller, kind: 'threat'};
+  writeRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/threat-events/${encodeURIComponent(id)}`,
+      {
+        method: 'PATCH',
+        headers: {Authorization: `Bearer ${token}`, 'Content-Type': 'application/json'},
+        body: JSON.stringify({status: nextStatus}),
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    const updated = await response.json();
+    if (!current()) return;
+    if (String(updated.event_id) !== id || updated.status !== nextStatus) {
+      throw new Error('The backend did not return the expected threat status. Refresh to check its saved state.');
+    }
+    coreData.events = coreData.events.map(e => String(e.event_id) === id ? updated : e);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Threat #${id} status saved: ${nextStatus}.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Threat status update timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm threat status. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (writeRequest === request) {
+      writeRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
+function renderSourceManagement() {
+  const box = document.getElementById('sourceManagement');
+  box.replaceChildren();
+  box.hidden = !FEATURES.sourceDeletion;
+  if (box.hidden || !authState.token) return;
+  const heading = document.createElement('h3');
+  heading.textContent = 'Source management';
+  const help = document.createElement('p');
+  help.textContent = 'Delete a source from the active registry. Existing events and alerts remain; new events cannot use a deleted source.';
+  box.append(heading, help);
+  if (!coreData.sources.length) {
+    const empty = document.createElement('p');
+    empty.textContent = 'No active sources.';
+    box.appendChild(empty);
+  }
+  for (const source of coreData.sources) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 0;border-bottom:1px solid var(--line)';
+    row.dataset.sourceRow = String(source.source_id);
+    const name = document.createElement('span');
+    name.textContent = `${source.source_name} · ID ${source.source_id}`;
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = 'btn btn-secondary btn-xs';
+    button.dataset.deleteSource = String(source.source_id);
+    button.setAttribute('aria-label', `Delete source ${source.source_name}, ID ${source.source_id}`);
+    button.disabled = !!writeRequest || !backend.connected;
+    button.textContent = writeRequest?.kind === 'source' && writeRequest.id === String(source.source_id) ? 'Deleting…' : 'Delete source';
+    button.addEventListener('click', () => deleteSource(source.source_id));
+    row.append(name, button);
+    box.appendChild(row);
+  }
+}
+
+async function deleteSource(sourceId) {
+  if (!FEATURES.sourceDeletion || !authState.token || writeRequest) return;
+  const id = String(sourceId);
+  const source = coreData.sources.find(r => String(r.source_id) === id);
+  if (!source || !backend.connected) return;
+  if (!window.confirm(`Delete source "${source.source_name}" (ID ${id})?\n\nIt will leave the active source list. Existing threats and alerts remain, but new events cannot use this source. There is no restore control in this console.`)) return;
+  const token = authState.token, epoch = sessionEpoch;
+  const controller = new AbortController();
+  const request = {id, controller, kind: 'source'};
+  writeRequest = request;
+  const current = () => epoch === sessionEpoch && token === authState.token;
+
+  // Invalidate reads started before this write so they cannot restore old data.
+  coreReadVersion++;
+  clearTimeout(coreTimer);
+  coreController?.abort();
+  coreController = null;
+  coreBusy = false;
+  renderAlertActions();
+  const timeout = setTimeout(() => controller.abort(), 10000);
+  try {
+    const response = await fetch(
+      `${API_BASE.replace(/\/+$/, '')}/sources/${encodeURIComponent(id)}`,
+      {
+        method: 'DELETE',
+        headers: {Authorization: `Bearer ${token}`},
+        signal: controller.signal,
+        cache: 'no-store'
+      }
+    );
+    if (!current()) return;
+    if (!response.ok) throw coreApiError(response.status);
+    // DELETE returns 204 with no response body; do not attempt JSON parsing.
+    if (response.status !== 204) {
+      throw new Error('The backend did not confirm deletion. Refresh to check the source before retrying.');
+    }
+    coreData.sources = coreData.sources.filter(r => String(r.source_id) !== id);
+    mapCoreRecords();
+    if (state.selected) select(state.selected); else render();
+    toast(`Source #${id} deleted. Existing threats and alerts were retained.`);
+  } catch (error) {
+    if (!current()) return;
+    if (error.status === 401 || error.status === 403) {
+      endCoreSession('Session expired or access denied. Please sign in again.');
+      return;
+    }
+    const message = error.name === 'AbortError'
+      ? 'Source deletion timed out. Its saved state is uncertain; refresh before retrying.'
+      : error instanceof TypeError || error instanceof SyntaxError
+        ? 'Could not confirm source deletion. Check the connection and refresh before retrying.'
+        : error.message;
+    toast(message);
+  } finally {
+    clearTimeout(timeout);
+    if (writeRequest === request) {
+      writeRequest = null;
+      if (current()) {
+        renderAlertActions();
+        // Reconcile with the backend, including requests whose response was lost.
+        void loadCoreData();
+      }
+    }
+  }
+}
+
+
 async function loadCoreData(){
-  if(!authState.token || coreBusy)return;
+  if(!authState.token || coreBusy || writeRequest)return;
   clearTimeout(coreTimer);coreBusy=true;
   const token=authState.token,epoch=sessionEpoch,controller=new AbortController();coreController=controller;
   const timeout=setTimeout(()=>controller.abort(),10000);
-  const current=()=>epoch===sessionEpoch && token===authState.token;
-  async function get(path){
-    const r=await fetch(`${API_BASE.replace(/\/+$/,'')}${path}`,{headers:{Authorization:`Bearer ${token}`},cache:'no-store',signal:controller.signal});
-    if(!r.ok){const error=new Error(`${path}: HTTP ${r.status}`);error.status=r.status;throw error;}
-    return r.json();
+  const readVersion=coreReadVersion;
+  const current=()=>epoch===sessionEpoch && token===authState.token && readVersion===coreReadVersion;
+    async function get(path) {
+    let response;
+
+    try {
+      response = await fetch(
+        `${API_BASE.replace(/\/+$/, '')}${path}`,
+        {
+          headers: {
+            Authorization: `Bearer ${token}`
+          },
+          cache: 'no-store',
+          signal: controller.signal
+        }
+      );
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+
+      throw new Error(
+        'Cannot reach the backend. Check your connection and make sure the API is running.'
+      );
+    }
+
+    if (!response.ok) {
+      throw coreApiError(response.status);
+    }
+
+    try {
+      return await response.json();
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        throw error;
+      }
+
+      throw new Error(
+        'The backend returned an unreadable response. Please try again.'
+      );
+    }
   }
   try{
     const user=await get('/auth/me');
@@ -1717,7 +2134,7 @@ async function loadCoreData(){
     if(current()){coreBusy=false;coreController=null;coreTimer=setTimeout(loadCoreData,5000);}
   }
 }
-window.addEventListener('pagehide',()=>{sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
+window.addEventListener('pagehide',()=>{writeRequest?.controller.abort();writeRequest=null;sessionEpoch++;clearTimeout(coreTimer);coreController?.abort();});
 
 
 function startAuthenticatedDashboard() {

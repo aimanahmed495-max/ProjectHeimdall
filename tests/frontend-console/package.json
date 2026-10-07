@@ -1,0 +1,13 @@
+{
+  "name": "heimdall-frontend-auth-tests",
+  "private": true,
+  "scripts": {
+    "test": "node console.test.cjs"
+  },
+  "devDependencies": {
+    "jsdom": "27.0.0"
+  },
+  "engines": {
+    "node": ">=20.19.0"
+  }
+}
