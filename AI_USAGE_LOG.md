@@ -437,3 +437,155 @@ These endpoints currently accept manual Swagger requests and automated test data
 **Human work completed:** Applied the changes to the existing dashboard and test files, rebuilt the frontend, and manually verified cancellation, successful deletion, persistence after refresh and login, and retention of existing threats and alerts.
 
 **Verification:** All 48 Node.js/jsdom frontend tests passed using mocked API responses. Manual source-deletion checks against the local backend passed. `git diff --check` reported no whitespace errors.
+
+## 2026-10-07 — CI Hardening: Complexity Caps and Dependency Scanning
+
+**Developer:** Aiman Ahmed
+**Branch:** `chore/31-ci-hardening` (PR #38)
+**Related issue:** Closes #31
+**AI tools:** Cursor (agent mode) for implementation; Claude for planning and review
+
+### Exact prompt submitted (Cursor):
+> Update the CI pipeline in .github/workflows/ci.yml and add supporting config. Keep every existing job working.
+>
+> Do NOT modify the existing frontend job. Add any new job at the end of the file, after secret-scan.
+>
+> 1. In pyproject.toml, add:
+>    [tool.ruff.lint] select = ["E","F","I","C901"]
+>    [tool.ruff.lint.mccabe] max-complexity = 10
+> 2. In the osint job, remove the --select E,F,I flag so it uses the shared config.
+> 3. Lint backend/, ai-brain/, and vision/ with the shared config.
+> 4. Add a complexipy step that fails on cognitive complexity above 15 for backend, ai-brain, and vision.
+> 5. Add a vision job: Python 3.11, install vision/requirements.txt, run pytest vision/tests. Skip with a clear message if vision/tests does not exist yet.
+> 6. Add a pip-audit step to the backend, osint, and vision jobs, run against each job's requirements file, failing on any known CVE.
+> 7. Create .github/dependabot.yml with weekly updates for pip (each requirements directory), github-actions, and docker.
+> 8. Do not change any application code yet. Run `ruff check .` and list every C901 violation so I can fix them separately.
+
+### Follow-up responses to Cursor's questions:
+> Import-order rule failures: "Run ruff --fix on the imports only, no logic changes."
+>
+> pip-audit CVE failures: "Bump only the vulnerable packages, to the minimum fixed version each. Don't touch other pins. Run the backend tests after. For vision, check that the module still imports. If a fix needs a major version jump or breaks tests, revert that bump and instead add --ignore-vuln <ID> to pip-audit with a comment explaining why, and tell me which ones."
+
+### AI output summary:
+Added ruff C901 (max 10) to the shared config, complexipy checks, pip-audit steps, a vision CI job, and Dependabot config. Fixed import order with `ruff --fix` and bumped vulnerable packages, adding `--ignore-vuln` entries for six backend advisories that need major upgrades.
+
+### Human review, refactoring and modifications made:
+* Found that `backend/ruff.toml` overrode the shared config, and had it extend `pyproject.toml`.
+* Found that `backend/Dockerfile` used Python 3.9, which cannot install the bumped `requests` and `python-dotenv`; changed it to 3.11.
+* Chose to ignore major-upgrade advisories instead of upgrading FastAPI and pytest the week of the prototype.
+* Kept the frontend job untouched to avoid conflicting with a teammate's open PR.
+
+### Verification and testing method:
+* `ruff check` and complexipy passed.
+* `docker compose build` and `up` succeeded on Python 3.11 with a fresh database; `/health` returned `{"status":"ok","database":"connected"}`.
+* CI passed on PR #38.
+
+---
+
+## 2026-10-08 — OWASP Audit and Documentation Package
+
+**Developer:** Aiman Ahmed
+**Branch:** `docs/35-owasp-readme-uml` (PR #49)
+**Related issue:** Closes #35
+**AI tools:** Cursor (agent mode) for drafting; Claude for planning and review
+
+### Exact prompt submitted (Cursor):
+> Documentation only. Do not change any application code, tests, CI, or requirements. Do not edit AI_USAGE_LOG.md.
+>
+> First read the code so every claim is verified: backend/app/ (main.py, auth.py, security.py, models.py, schemas.py, database.py), backend/alembic/versions/, docker-compose.yml, .env.example files, ai-brain/, vision/, frontend/, .github/workflows/ci.yml, .github/dependabot.yml, and the existing README.md. Never state something the code does not do. Cite file paths in the audit.
+>
+> 1. docs/OWASP_AUDIT.md: audit against the OWASP Top 10 (2021), one section per category A01-A10. For each: whether it applies to Heimdall, what the code does about it (with file references), a status of Implemented / Partial / Open / Not applicable, and any remaining gap. Specifically verify and report on:
+>    - A01: which endpoints require authentication (read main.py), role checks, and CORS.
+>    - A02: JWT signing and expiry, Argon2 password hashing (pwdlib), secrets read from environment.
+>    - A03: input validation (Pydantic schemas) and SQL injection (SQLAlchemy ORM).
+>    - A04/A05: configuration defaults, .env.example hygiene, debug settings, Docker setup.
+>    - A06: dependency scanning (pip-audit in CI, Dependabot), and these accepted backend vulnerabilities ignored in ci.yml because the fixes need major upgrades: PYSEC-2026-1845 (pytest 9, dev only) and PYSEC-2026-161, -248, -249, -2280, -2281 (starlette 1.x via fastapi). Mark A06 as Partial.
+>    - A07: authentication flow, token handling, any login rate limiting or lockout (report honestly if absent).
+>    - A08/A09: logging, audit logs table, CI integrity (secret scanning with TruffleHog).
+>    - A10: any server-side outbound requests (the OSINT module).
+>    Also add a Data Privacy section: password hashing, soft deletes via deleted_at (list which tables have it), and where PII is stored. End with a summary table and a list of open items.
+>
+> 2. README.md: update the existing file. Keep what is accurate. Add or fix: project overview, architecture overview, features implemented in this prototype, tech stack, quick start with `docker compose down -v` then `docker compose up`, environment variables (names only, no secrets), how to run tests and linting, CI checks (ruff C901, complexipy, pip-audit, TruffleHog), the branching and commit conventions (feature/*, chore/*, docs/*, Conventional Commits, PRs link an Issue), and a link to docs/. Do not document feature flags or adapters that do not exist in the code yet.
+>
+> 3. docs/ARCHITECTURE.md: a Mermaid component diagram (flowchart) of the layers as actually implemented: OSINT module (ai-brain), backend API (FastAPI), PostgreSQL, vision module, frontend, and the data flows between them. Add a Mermaid ER diagram of the database tables from models.py, and a Mermaid sequence diagram of the login flow (JWT). Short prose under each diagram.
+>
+> 4. docs/DEVELOPER_SETUP.md: step-by-step setup for a new developer on macOS or Linux: prerequisites (Docker, Python 3.11 or newer), clone, .env setup, docker compose up, seeding data, health check (curl localhost:8000/health), running each module's tests, linting, and troubleshooting. Include this known issue: if the API exits on startup with a ForeignKeyViolation on threat_events, run `docker compose down -v` to reset the local database volume.
+>
+> When finished, list the files you created or changed and any claim you could not verify from the code.
+
+### AI output summary:
+Drafted `docs/OWASP_AUDIT.md`, an updated `README.md`, `docs/ARCHITECTURE.md` (Mermaid component, ER, and login sequence diagrams), and `docs/DEVELOPER_SETUP.md`.
+
+### Human review, refactoring and modifications made:
+* Read the audit against the code and kept its Partial statuses and open items instead of overstating controls.
+* Reviewed the generated files before committing; no application code was changed.
+
+### Verification and testing method:
+* Spot-checked audit claims with `grep` (no `role` column in `models.py`; `ENABLE_USER_REGISTRATION` defaults to true in `docker-compose.yml` and `auth.py`) and by listing `backend/alembic/versions` to confirm migration `0dafecf04f65` exists.
+* Passed peer review and CI on PR #49.
+
+---
+
+## 2026-10-08 — Live OSINT Adapters and Corroboration
+
+**Developer:** Aiman Ahmed
+**Branch:** `feature/32-osint-adapters` (PR #50)
+**Related issues:** Closes #32, Closes #33
+**AI tools:** Cursor (agent mode) for implementation; Claude for planning and review
+
+### Exact prompt submitted (Cursor):
+> Work in ai-brain/ only. Do not modify backend/, frontend/, vision/, docs/, or .github/.
+>
+> First read: ai-brain/main.py, osint_agent.py, osint_client.py, mock_alerts.json, mock_sources.json, requirements.txt, .env.example, ai-brain/tests/, plus backend/app/schemas.py and backend/app/main.py (read-only) to learn the exact request fields and allowed values for sources, threat events, PATCH /threat-events/{id} (including the corroboration field and status values) and PUT /camera-states/{camera_id}. Match the existing code style. The existing mock behavior must keep working unchanged.
+>
+> Implement GitHub Issues #32 and #33 (trimmed scope):
+>
+> 1. SourceAdapter: abstract base class (docstrings, type hints) that yields SourceItem(source_name, text, timestamp, external_id) and skips external_ids it has already returned.
+>
+> 2. NtfyAdapter: poll https://<NTFY_SERVER>/<NTFY_TOPIC>/json?poll=1&since=<last id or 10m> with requests (no streaming, no new dependency). Parse one JSON object per line and keep only event == "message". external_id = the message id. Source name "ntfy-tipline".
+>
+> 3. RssAdapter: fetch RSS_FEED_URL (default http://localhost:8001/feed.xml) with requests and parse it with the standard library xml.etree.ElementTree (no feedparser). external_id = item guid. Source name "local-rss-feed".
+>
+> 4. ai-brain/demo_feed.py: a demo RSS server using ONLY the standard library (http.server). GET /feed.xml returns RSS 2.0 with the items posted so far; GET / returns a simple HTML page with a text box and Submit button; POST /items adds an item to an in-memory list. Port 8001 (DEMO_FEED_PORT). Runnable with `python ai-brain/demo_feed.py`. No FastAPI.
+>
+> 5. KeywordFilter: case-insensitive match against OSINT_KEYWORDS (comma-separated, with defaults such as shots, gun, weapon, armed, fire, explosion, suspicious, fight, robbery, threat). Items without a match are logged and dropped before any LLM call.
+>
+> 6. CorroborationTracker: a pure, testable class. Keep recent reports keyed by the agent's classified threat category (use whatever category field the agent already returns). An event is corroborated when 2 or more DISTINCT source_ids report the same category within CORROBORATION_WINDOW_SECONDS (default 300). Two reports from the same source never count. Fire once per corroborated group: do not re-activate on every new report.
+>
+> 7. On corroboration, via the existing client: PATCH the threat event(s) to the corroborated status and set the corroboration field (use the exact field names from the backend schemas), then PUT /camera-states/<CAMERA_ID> to Active (CAMERA_ID default 1), then POST a system log entry for the activation. A single report must leave the camera unchanged.
+>
+> 8. Source registration: register both sources through the existing client at startup. Fetch existing sources first so reruns do not fail with 409, and map each adapter to its source_id.
+>
+> 9. Feature flag FEATURE_LIVE_OSINT (default false). Off: existing mock behavior, unchanged. On: loop every OSINT_POLL_SECONDS (default 5): poll adapters, filter, run the existing agent on each item with its source_id, feed the result to the tracker. Add to ai-brain/.env.example (placeholders only): FEATURE_LIVE_OSINT, NTFY_SERVER=https://ntfy.sh, NTFY_TOPIC=heimdall-demo-change-me, RSS_FEED_URL, OSINT_POLL_SECONDS, OSINT_KEYWORDS, CORROBORATION_WINDOW_SECONDS, CAMERA_ID.
+>
+> 10. No new dependencies. Do not edit requirements.txt unless unavoidable; if it is, tell me why.
+>
+> 11. Tests in ai-brain/tests with ALL network calls and the LLM mocked. Never construct a real ChatGroq (CI has no GROQ_API_KEY); inject a fake agent. Cover: ntfy parsing (message vs open/keepalive lines) and dedup, RSS parsing, keyword match / no match / case-insensitive, corroboration (one source stays pending; two distinct sources corroborate; same source twice does not; reports outside the window do not; fires only once), the activation calls (PATCH then PUT happen once), flag off uses the mock path, flag on uses the adapters, and source registration is idempotent.
+>
+> 12. Quality: object-oriented, docstrings, type hints. Every function under cyclomatic complexity 10 (ruff C901) and cognitive complexity 15 (complexipy), so split logic into small methods. Public, unauthenticated sources only. No secrets in code.
+>
+> When finished, run and report the full output of:
+> ruff check ai-brain
+> complexipy ai-brain --max-complexity-allowed 15
+> pytest ai-brain/tests -q
+
+### AI output summary:
+Added ntfy and RSS source adapters behind a `SourceAdapter` base class, a standard-library demo feed server, a keyword filter, a corroboration tracker (2+ distinct sources within a time window), a camera activator, idempotent source registration, and the `FEATURE_LIVE_OSINT` flag.
+
+### Human review, refactoring and modifications made:
+* Cut Bluesky and any new dependencies from the scope so the CI dependency audit would not fail on new advisories.
+* Confirmed that only `ai-brain/` changed and that `requirements.txt` was untouched.
+
+### Verification and testing method:
+* `ruff check ai-brain` passed.
+* `complexipy ai-brain --max-complexity-allowed 15` passed with all functions under the limit (highest score 12, in existing code).
+* `pytest ai-brain/tests -q`: 29 passed, with all network and LLM calls mocked.
+* CI passed on PR #50.
+
+---
+
+## Audit Certification
+
+I certify as Team Lead that all entries above accurately represent AI usage within this project phase, all prompts have been recorded, and all code has been validated by human review and automated testing.
+
+**Team Lead Signature:** *Aiman Ahmed* — **Date:** October 8, 2026
