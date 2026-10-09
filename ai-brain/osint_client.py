@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 import requests
 
@@ -157,6 +157,70 @@ class HeimdallAPIClient:
 
         response = self._request("POST", "/system-logs", json_body=log_entry)
         self._ensure_success(response, expected_status=201)
+        return response.json()
+
+    def list_sources(self) -> List[Dict[str, Any]]:
+        """Return active OSINT sources from ``GET /sources``."""
+
+        response = self._request("GET", "/sources")
+        self._ensure_success(response, expected_status=200)
+        payload = response.json()
+        if not isinstance(payload, list):
+            raise HeimdallAPIError("Heimdall sources response was not a list.")
+        return payload
+
+    def patch_threat_event(
+        self,
+        event_id: int,
+        update: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Update a threat event with ``PATCH /threat-events/{event_id}``.
+
+        ``update`` matches ``ThreatEventUpdate``: ``status`` and
+        ``corroborated_at``.
+
+        Args:
+            event_id: Threat event to update.
+            update: Fields to change. ``corroborated_at`` is an ISO-8601
+                timestamp string.
+
+        Returns:
+            The updated threat-event record.
+        """
+
+        response = self._request(
+            "PATCH",
+            f"/threat-events/{event_id}",
+            json_body=update,
+        )
+        self._ensure_success(response, expected_status=200)
+        return response.json()
+
+    def put_camera_state(
+        self,
+        camera_id: int,
+        state: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """Update a camera with ``PUT /camera-states/{camera_id}``.
+
+        ``state`` matches ``CameraStateUpdate``: ``mode`` (``Dormant`` or
+        ``Active``), ``fps``, and ``resolution``. The camera row must
+        already exist.
+
+        Args:
+            camera_id: ``camera_states.camera_id`` to update.
+            state: Replacement mode, fps, and resolution.
+
+        Returns:
+            The updated camera-state record.
+        """
+
+        response = self._request(
+            "PUT",
+            f"/camera-states/{camera_id}",
+            json_body=state,
+        )
+        self._ensure_success(response, expected_status=200)
         return response.json()
 
     def _find_source_by_name(self, source_name: str) -> Optional[Dict[str, Any]]:

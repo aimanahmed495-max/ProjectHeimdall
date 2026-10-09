@@ -67,6 +67,25 @@ python main.py
 
 The process prints authentication status, source registration, Groq classifications, created record IDs, and any errors.
 
+`FEATURE_LIVE_OSINT` defaults to `false`. Leave it false to keep this mock path.
+
+## Live sources
+
+Set `FEATURE_LIVE_OSINT=true` in `ai-brain/.env` to poll two public sources instead of the mock files:
+
+- ntfy topic `NTFY_TOPIC` on `NTFY_SERVER` (a normal HTTP poll, not a stream)
+- RSS document `RSS_FEED_URL` (default `http://localhost:8001/feed.xml`)
+
+Start the local RSS demo, which uses only the Python standard library:
+
+```bash
+python ai-brain/demo_feed.py
+```
+
+Open <http://127.0.0.1:8001/>, submit a report, and the feed is at `/feed.xml`. Reports that do not match `OSINT_KEYWORDS` are logged and are not sent to Groq.
+
+When two different registered sources classify the same `object_class` within `CORROBORATION_WINDOW_SECONDS` (default 300), the loop PATCHes those threat events to status `Corroborated` with `corroborated_at`, PUTs camera `CAMERA_ID` (default 1) to `Active`, and posts one system log. One source does not change the camera. The camera row must already exist. A second report of a category that already corroborated does not activate the camera again.
+
 ## Test
 
 From the repository root:
