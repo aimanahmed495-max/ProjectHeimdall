@@ -5,21 +5,28 @@ from __future__ import annotations
 import json
 import sys
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 
 from dotenv import load_dotenv
+from live_osint import LiveOsintRunner
 from osint_agent import OsintAgent, OsintAgentError, OsintAgentState
 from osint_client import (
     HeimdallAPIClient,
     HeimdallAPIError,
     HeimdallAPIUnavailableError,
 )
+from osint_settings import configure_logging, live_osint_enabled
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
 
 class OsintIngestionApp:
-    """Load mock OSINT data, register sources, and process alerts."""
+    """Load OSINT data, register sources, and process alerts.
+
+    ``FEATURE_LIVE_OSINT`` defaults to off. The mock JSON path below is
+    unchanged in that mode. When the flag is on, live ntfy and RSS
+    adapters are polled instead.
+    """
 
     def __init__(self, package_dir: Path = PACKAGE_DIR) -> None:
         """Configure paths and load ``ai-brain/.env`` if present.
@@ -34,12 +41,15 @@ class OsintIngestionApp:
         self._client = HeimdallAPIClient()
 
     def run(self) -> int:
-        """Register mock sources, process mock alerts, and print a summary.
+        """Register sources, process alerts, and print a summary.
 
         Returns:
             Process exit code: ``0`` on success, ``1`` on a controlled
             failure such as a missing API or Groq key.
         """
+
+        if live_osint_enabled():
+            return self._run_live()
 
         print("Heimdall OSINT ingestion")
         print(f"API: {self._client.base_url}")
@@ -97,6 +107,53 @@ class OsintIngestionApp:
             return 1
 
         return 0
+
+    def _run_live(self) -> int:
+        """Authenticate, then poll ntfy and RSS until interrupted."""
+
+        print("Heimdall OSINT ingestion (live sources)")
+        print(f"API: {self._client.base_url}")
+        print()
+        if not self._authenticate_live():
+            return 1
+        agent = self._build_live_agent()
+        if agent is None:
+            return 1
+        configure_logging()
+        return self._start_live(agent)
+
+    def _authenticate_live(self) -> bool:
+        """Log in for the live path. Return False after a controlled error."""
+
+        try:
+            self._client.authenticate()
+        except HeimdallAPIUnavailableError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return False
+        except HeimdallAPIError as exc:
+            print(f"Error preparing OSINT ingestion: {exc}", file=sys.stderr)
+            return False
+        print("Authentication: successful")
+        print()
+        return True
+
+    def _build_live_agent(self) -> Optional[OsintAgent]:
+        """Construct the Groq agent, or return None when it cannot start."""
+
+        try:
+            return OsintAgent(client=self._client)
+        except OsintAgentError as exc:
+            print(f"Error: {exc}", file=sys.stderr)
+            return None
+
+    def _start_live(self, agent: OsintAgent) -> int:
+        """Run the live loop and translate startup failures to exit code 1."""
+
+        try:
+            return LiveOsintRunner(client=self._client, agent=agent).run()
+        except (HeimdallAPIError, ValueError) as exc:
+            print(f"Error preparing OSINT ingestion: {exc}", file=sys.stderr)
+            return 1
 
     def _register_sources(
         self,
