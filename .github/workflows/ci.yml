@@ -162,6 +162,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
 
+    env:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+      JWT_SECRET_KEY: heimdall-ci-test-key-not-for-production-use-only
+
     steps:
       - uses: actions/checkout@v4
 
