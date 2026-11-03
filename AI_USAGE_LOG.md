@@ -600,7 +600,7 @@ I certify as Team Lead that all entries above accurately represent AI usage with
 **AI tools:** Codex for planning, troubleshooting, and review
 
 
-### Generated output used:
+### Assistance:
 
 * Suggested an isolated Git branch and Playwright test structure.
 * Provided the Playwright configuration and browser E2E test.
@@ -626,3 +626,38 @@ I certify as Team Lead that all entries above accurately represent AI usage with
 * API health check returned a healthy database connection.
 * Streamlit health check returned `ok`.
 * `git diff --check` reported no whitespace errors.
+
+
+---
+
+## 2026-11-02 — Prototype 3 Frontend E2E CI Integration
+
+**Developer:** Zareer Sanjeed Khan
+**Branch:** `ci/prototype3-frontend-e2e`
+**Related issues:** Prototype 3 frontend testing and CI integration
+**AI tools:** Codex for workflow planning, YAML generation, and validation guidance
+
+
+### Assistance:
+
+* Configured Node.js 22 and installed the isolated dependencies from `tests/e2e`.
+* Installed Playwright Chromium and its required system dependencies.
+* Started the Heimdall application with Docker Compose.
+* Added API and Streamlit health-check waits before executing the browser test.
+* Seeded the test database before running Playwright.
+* Added failure-only uploads for Playwright screenshots, traces, and reports.
+* Added service-log collection on failure and unconditional Docker cleanup.
+
+### Human review, refactoring, and modifications made:
+
+* Reviewed the existing workflow before making changes.
+* Kept the new browser test in a separate job without modifying the existing backend, frontend, OSINT, secret-scan, or vision jobs.
+* Reviewed the Docker service name, health-check URLs, seed command, test directory, and artifact paths.
+* Confirmed the workflow uses the previously tested Playwright E2E configuration.
+
+### Verification and testing method:
+
+* `git diff --check` reported no whitespace errors.
+* Ruby successfully parsed the workflow: `YAML syntax valid`.
+* `docker compose config --quiet` completed successfully: `Docker Compose config valid`.
+* The Playwright workflow had previously passed locally after correcting the initial iframe locator failure.
