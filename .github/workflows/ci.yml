@@ -156,3 +156,83 @@ jobs:
           pytest vision/tests -q
       - name: Audit vision dependencies
         run: pip-audit -r vision/requirements.txt
+
+
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    env:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: test
+      JWT_SECRET_KEY: heimdall-ci-test-key-not-for-production-use-only
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: tests/e2e/package-lock.json
+
+      - name: Install E2E dependencies
+        working-directory: tests/e2e
+        run: npm ci --no-audit --no-fund
+
+      - name: Install Playwright Chromium
+        working-directory: tests/e2e
+        run: npx playwright install --with-deps chromium
+
+      - name: Start Heimdall services
+        run: docker compose up -d --build
+
+      - name: Wait for API
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8000/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Wait for frontend
+        run: |
+          for attempt in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:8501/_stcore/health; then
+              exit 0
+            fi
+            sleep 2
+          done
+          docker compose logs
+          exit 1
+
+      - name: Seed test data
+        run: docker compose exec -T api python -m backend.app.seed
+
+      - name: Run Playwright E2E test
+        working-directory: tests/e2e
+        run: npm test
+
+      - name: Upload Playwright failure evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-failure-evidence
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: Show service logs after failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Stop Heimdall services
+        if: always()
+        run: docker compose down -v
