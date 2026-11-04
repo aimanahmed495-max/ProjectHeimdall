@@ -1,0 +1,5 @@
+---
+description: Draft the AI usage log entry for this session (prompt, output, human review, verification). Use when asked for the AI log, session log, or usage log.
+alwaysApply: false
+---
+Follow the procedure in `.claude/skills/ai-log/SKILL.md` exactly. It is shared between Cursor and Claude Code.

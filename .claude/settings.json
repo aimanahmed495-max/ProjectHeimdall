@@ -1,0 +1,52 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(bash scripts/check)",
+      "Bash(.venv/backend/bin/pytest:*)",
+      "Bash(.venv/osint/bin/pytest:*)",
+      "Bash(.venv/frontend/bin/pytest:*)",
+      "Bash(.venv/backend/bin/ruff:*)",
+      "Bash(git status)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)"
+    ],
+    "ask": [
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(uv pip install:*)",
+      "Edit(./AI_USAGE_LOG.md)",
+      "Write(./AI_USAGE_LOG.md)"
+    ],
+    "deny": [
+      "Read(./.env)",
+      "Read(./.env.*)",
+      "Read(./ai-brain/.env)",
+      "Read(./backend/.env)",
+      "Read(./vision/.env)"
+    ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Read|Edit|Write",
+        "hooks": [
+          { "type": "command", "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/guard_secrets.py" }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          { "type": "command", "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/hooks/log_session.py claude-code prompt" }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          { "type": "command", "command": "cd \"$CLAUDE_PROJECT_DIR\" && python3 scripts/hooks/log_session.py claude-code stop" }
+        ]
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+#!/usr/bin/env bash
+# Builds the three virtualenvs the cloud agent needs. They mirror the separate CI jobs,
+# because the module requirements are installed separately there.
+set -euo pipefail
+cd "$(dirname "${BASH_SOURCE[0]}")/.."
+
+uv python install 3.11
+
+uv venv --python 3.11 .venv/backend
+uv pip install --python .venv/backend/bin/python \
+  -r backend/requirements.txt -r backend/requirements-dev.txt ruff complexipy
+
+uv venv --python 3.11 .venv/osint
+uv pip install --python .venv/osint/bin/python \
+  -r ai-brain/requirements.txt pytest ruff complexipy
+
+uv venv --python 3.11 .venv/frontend
+uv pip install --python .venv/frontend/bin/python \
+  -r frontend/requirements.txt pytest
