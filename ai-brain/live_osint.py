@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import sys
+import logging
 import time
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence
@@ -13,9 +13,12 @@ from corroboration import Corroboration, CorroborationTracker
 from keyword_filter import KeywordFilter
 from ntfy_adapter import NtfyAdapter
 from osint_client import HeimdallAPIClient, HeimdallAPIError
+from osint_logging import log_context, log_event, new_request_id
 from osint_settings import camera_id, corroboration_window_seconds, poll_seconds
 from rss_adapter import RssAdapter
 from source_adapter import SourceAdapter, SourceItem
+
+logger = logging.getLogger(__name__)
 
 
 class AlertAgent(Protocol):
@@ -38,6 +41,7 @@ class LiveOsintRunner:
         activator: Optional[CameraActivator] = None,
         poll_interval: Optional[float] = None,
         sleep: Optional[Callable[[float], None]] = None,
+        user_id: Optional[int] = None,
     ) -> None:
         """Wire the live loop.
 
@@ -51,6 +55,7 @@ class LiveOsintRunner:
             poll_interval: Seconds between polls. Defaults to
                 ``OSINT_POLL_SECONDS``.
             sleep: Wait function, replaced in tests.
+            user_id: API user id attached to every log event.
         """
 
         self._client = client
@@ -66,6 +71,7 @@ class LiveOsintRunner:
         )
         self._poll_interval = poll_seconds() if poll_interval is None else poll_interval
         self._sleep = sleep or self._default_sleep
+        self._user_id = user_id
 
     def register_sources(self) -> Dict[str, int]:
         """Fetch existing sources, create any that are missing, and map ids.
@@ -97,7 +103,8 @@ class LiveOsintRunner:
         source_ids = self.register_sources()
         self._print_source_ids(source_ids)
         try:
-            return self._poll_loop(source_ids, max_cycles)
+            with log_context(user_id=self._user_id):
+                return self._poll_loop(source_ids, max_cycles)
         except KeyboardInterrupt:
             print("\nStopped live OSINT polling.")
             return 0
@@ -191,31 +198,52 @@ class LiveOsintRunner:
     def _new_items(self, adapter: SourceAdapter) -> List[SourceItem]:
         """Poll one adapter and drop text that fails the keyword filter."""
 
-        try:
-            fetched = list(adapter.poll())
-        except requests.RequestException as exc:
-            self._report_error(exc)
-            return []
-        return self._keywords.keep(fetched)
+        with log_context(request_id=new_request_id()):
+            try:
+                fetched = list(adapter.poll())
+            except requests.RequestException as exc:
+                self._report_error(exc, stage="poll", source=adapter.source_name)
+                return []
+            return self._keywords.keep(fetched)
 
     def _process_item(self, item: SourceItem, source_id: int) -> None:
         """Run the agent, then update corroboration for one item."""
 
-        try:
-            result = self._agent.run(item.text, source_id)
-        except HeimdallAPIError as exc:
-            self._report_error(exc)
-            return
-        if not isinstance(result, dict):
-            return
-        self._announce(item, result)
-        self._consider(result, source_id, item.timestamp)
+        with log_context(request_id=new_request_id()):
+            try:
+                result = self._agent.run(item.text, source_id)
+            except HeimdallAPIError as exc:
+                self._report_error(exc, stage="classify", source_id=source_id)
+                return
+            if not isinstance(result, dict):
+                return
+            self._announce(item, result, source_id)
+            self._consider(result, source_id, item.timestamp)
 
-    def _announce(self, item: SourceItem, result: Dict[str, Any]) -> None:
-        """Print the classification outcome for one live item."""
+    def _announce(
+        self,
+        item: SourceItem,
+        result: Dict[str, Any],
+        source_id: int,
+    ) -> None:
+        """Log the classification outcome for one live item."""
 
-        label = result.get("object_class") or result.get("error") or "not classified"
-        print(f"Live item {item.external_id}: {label}")
+        error = result.get("error")
+        object_class = result.get("object_class")
+        level = logging.WARNING if error else logging.INFO
+        label = object_class or error or "not classified"
+        log_event(
+            logger,
+            level,
+            "classify",
+            f"Live item {item.external_id}: {label}",
+            external_id=item.external_id,
+            source_id=source_id,
+            object_class=object_class,
+            confidence_score=result.get("confidence_score"),
+            event_id=self._event_id(result),
+            error=error,
+        )
 
     def _consider(
         self,
@@ -243,7 +271,17 @@ class LiveOsintRunner:
             self._activator.activate(outcome)
         except HeimdallAPIError as exc:
             self._tracker.release(outcome.category)
-            self._report_error(exc)
+            self._report_error(exc, stage="corroborate", category=outcome.category)
+            return
+        log_event(
+            logger,
+            logging.INFO,
+            "corroborate",
+            f"Corroborated {outcome.category}; camera activated.",
+            category=outcome.category,
+            event_ids=list(outcome.event_ids),
+            source_ids=list(outcome.source_ids),
+        )
 
     def _category(self, result: Dict[str, Any]) -> Optional[str]:
         """Return the agent object class when it is a non-empty string."""
@@ -264,10 +302,18 @@ class LiveOsintRunner:
             return event_id
         return None
 
-    def _report_error(self, exc: Exception) -> None:
-        """Print a controlled live-loop error and keep polling."""
+    def _report_error(self, exc: Exception, stage: str, **fields: Any) -> None:
+        """Log a controlled live-loop error and keep polling."""
 
-        print(f"Error: {exc}", file=sys.stderr)
+        log_event(
+            logger,
+            logging.ERROR,
+            "error",
+            f"Error: {exc}",
+            stage=stage,
+            error_type=type(exc).__name__,
+            **fields,
+        )
 
     @staticmethod
     def _default_sleep(seconds: float) -> None:

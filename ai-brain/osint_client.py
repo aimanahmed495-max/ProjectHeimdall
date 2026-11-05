@@ -86,6 +86,24 @@ class HeimdallAPIClient:
 
         self._session.headers.update({"Authorization": f"Bearer {token}"})
 
+    def current_user_id(self) -> Optional[int]:
+        """Return the authenticated user's id from ``GET /auth/me``.
+
+        Used only to tag log events, so a failed lookup is not fatal.
+
+        Returns:
+            The ``user_id``, or ``None`` when the API call fails or the
+            payload has no integer ``user_id``.
+        """
+
+        try:
+            response = self._request("GET", "/auth/me")
+            self._ensure_success(response, expected_status=200)
+            user_id = response.json().get("user_id")
+        except (HeimdallAPIError, ValueError, AttributeError):
+            return None
+        return user_id if isinstance(user_id, int) else None
+
     def register_source(self, source: Dict[str, Any]) -> Dict[str, Any]:
         """Register an OSINT source with ``POST /sources``.
 

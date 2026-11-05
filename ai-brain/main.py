@@ -15,7 +15,8 @@ from osint_client import (
     HeimdallAPIError,
     HeimdallAPIUnavailableError,
 )
-from osint_settings import configure_logging, live_osint_enabled
+from osint_logging import configure_logging
+from osint_settings import live_osint_enabled
 
 PACKAGE_DIR = Path(__file__).resolve().parent
 
@@ -150,7 +151,11 @@ class OsintIngestionApp:
         """Run the live loop and translate startup failures to exit code 1."""
 
         try:
-            return LiveOsintRunner(client=self._client, agent=agent).run()
+            return LiveOsintRunner(
+                client=self._client,
+                agent=agent,
+                user_id=self._client.current_user_id(),
+            ).run()
         except (HeimdallAPIError, ValueError) as exc:
             print(f"Error preparing OSINT ingestion: {exc}", file=sys.stderr)
             return 1

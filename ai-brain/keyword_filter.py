@@ -6,6 +6,7 @@ import logging
 import os
 from typing import Iterable, List, Tuple
 
+from osint_logging import log_event
 from source_adapter import SourceItem
 
 logger = logging.getLogger(__name__)
@@ -66,10 +67,14 @@ class KeywordFilter:
     def _log_drop(self, item: SourceItem) -> None:
         """Record that an item never reached the classifier."""
 
-        logger.info(
-            "Dropped OSINT item %s from %s: no keyword match.",
-            item.external_id,
-            item.source_name,
+        log_event(
+            logger,
+            logging.INFO,
+            "keyword_drop",
+            f"Dropped OSINT item {item.external_id} from {item.source_name}: "
+            "no keyword match.",
+            external_id=item.external_id,
+            source=item.source_name,
         )
 
     @staticmethod
