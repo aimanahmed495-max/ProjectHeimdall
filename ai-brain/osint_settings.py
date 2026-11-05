@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 
 
@@ -32,14 +31,6 @@ def camera_id() -> int:
     """Return ``CAMERA_ID``, or 1 when the value is unusable."""
 
     return _positive_int("CAMERA_ID", 1)
-
-
-def configure_logging() -> None:
-    """Show info logs when the process has not configured logging yet."""
-
-    if logging.getLogger().handlers:
-        return
-    logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 
 def _positive_int(name: str, default: int) -> int:
