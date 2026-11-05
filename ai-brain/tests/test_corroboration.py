@@ -83,3 +83,29 @@ def test_different_categories_do_not_corroborate():
 
     assert tracker.observe(1, "person", 10, NOW) is None
     assert tracker.observe(2, "vehicle", 20, NOW + timedelta(seconds=5)) is None
+
+
+def test_synonyms_of_the_same_class_corroborate():
+    """Two sources using different synonyms for one class still agree."""
+
+    tracker = make_tracker()
+
+    assert tracker.observe(1, "man", 10, NOW) is None
+    result = tracker.observe(2, "woman", 20, NOW + timedelta(seconds=15))
+
+    assert result is not None
+    assert result.category == "person"
+    assert result.source_ids == (1, 2)
+    assert result.event_ids == (10, 20)
+
+
+def test_vehicle_synonyms_corroborate():
+    """Car and truck count as the same vehicle class."""
+
+    tracker = make_tracker()
+
+    assert tracker.observe(1, "car", 10, NOW) is None
+    result = tracker.observe(2, "truck", 20, NOW + timedelta(seconds=5))
+
+    assert result is not None
+    assert result.category == "vehicle"
