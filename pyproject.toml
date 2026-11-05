@@ -1,6 +1,10 @@
 [tool.pytest.ini_options]
 pythonpath = ["."]
 testpaths = ["tests"]
+addopts = "-m 'not e2e'"
+markers = [
+    "e2e: starts the real API against the local test Postgres; run with -m e2e",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "C901"]
