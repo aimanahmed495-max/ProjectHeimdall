@@ -144,6 +144,8 @@ Alembic revisions in `backend/alembic/versions/` are the schema history. Current
 
 **What the code does.** `system_logs` in `backend/app/models.py` stores `module` and `message`, with an optional `event_id`. Rows are created only when a client calls `POST /system-logs`. The OSINT agent and the vision pipeline post those rows after a successful classification or detection (`ai-brain/osint_agent.py`, `vision/main.py`). List and create both require a bearer token. The table has no `deleted_at` column, and `GET /system-logs` returns every row.
 
+The live OSINT loop writes JSON lines to stderr (`ai-brain/osint_logging.py`, `ai-brain/live_osint.py`). Each classify, corroborate, keyword-drop, and error event carries `timestamp`, `level`, `request_id` (one per source poll and one per classified item), and `user_id` (the OSINT service account, read from `GET /auth/me` in `ai-brain/osint_client.py`). Events log the exception message and alert metadata, not credentials or the bearer token. They are not shipped anywhere; they stay on the process's stderr.
+
 `backend/app/` does not import a logger and does not write login success, login failure, or registration to `system_logs` or anywhere else. Uvicorn is started with no custom log configuration. There is no metrics or alerting service in Compose.
 
 TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets. That is a CI integrity check, not runtime monitoring of the API.
@@ -158,7 +160,7 @@ TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets.
 
 **What the code does.** `backend/app/main.py` talks only to PostgreSQL. It stores `osint_sources.url` and never requests it.
 
-`ai-brain/osint_client.py` uses `requests` against `BASE_URL` (default `http://localhost:8000`) with a 10-second timeout. Paths are fixed: `/auth/login`, `/sources`, `/threat-events`, and `/system-logs`. `ai-brain/osint_agent.py` sends alert text to Groq through `ChatGroq` (`model` `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set. Mock alerts are read from local JSON files in `ai-brain/main.py`, not from the source URL.
+`ai-brain/osint_client.py` uses `requests` against `BASE_URL` (default `http://localhost:8000`) with a 10-second timeout. Paths are fixed: `/auth/login`, `/auth/me`, `/sources`, `/threat-events`, and `/system-logs`. `ai-brain/osint_agent.py` sends alert text to Groq through `ChatGroq` (`model` `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set. Mock alerts are read from local JSON files in `ai-brain/main.py`, not from the source URL.
 
 `vision/vision_client.py` calls the same style of fixed paths on `BASE_URL`, plus `/camera-states`. `vision/detector.py` can download `yolov8n.pt` through Ultralytics. The browser map in `frontend/heimdall_console.html` loads OpenStreetMap tiles in the client, not on the API server.
 
