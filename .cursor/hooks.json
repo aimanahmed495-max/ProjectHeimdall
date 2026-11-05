@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "hooks": {
+    "beforeSubmitPrompt": [
+      { "command": "python3 scripts/hooks/log_session.py cursor prompt" }
+    ],
+    "afterAgentResponse": [
+      { "command": "python3 scripts/hooks/log_session.py cursor response" }
+    ]
+  }
+}

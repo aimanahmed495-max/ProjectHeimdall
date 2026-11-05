@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# CI-equivalent check for agents and local use. Prints only failures.
+# Run with: bash scripts/check
+set -u
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "$ROOT" || exit 1
+fail=0
+run() {
+  out=$("$@" 2>&1) || { echo "FAIL: $*"; echo "$out" | tail -n 40; fail=1; }
+}
+
+B="$ROOT/.venv/backend/bin"
+O="$ROOT/.venv/osint/bin"
+F="$ROOT/.venv/frontend/bin"
+
+export POSTGRES_USER=test POSTGRES_PASSWORD=test POSTGRES_DB=test
+export POSTGRES_HOST=localhost POSTGRES_PORT=5432
+export JWT_SECRET_KEY=heimdall-ci-test-key-not-for-production-use-only
+export JWT_ALGORITHM=HS256 JWT_ACCESS_TOKEN_MINUTES=30
+
+run "$B/ruff" check backend/ ai-brain/ vision/
+run "$B/complexipy" backend --max-complexity-allowed 15
+run "$O/complexipy" ai-brain --max-complexity-allowed 15
+run "$O/complexipy" vision --max-complexity-allowed 15
+run bash -c "cd backend && '$B/alembic' upgrade head"
+run env PYTHONPATH=. "$B/pytest" backend/tests -q -x
+run "$O/pytest" ai-brain/tests -q -x
+run "$F/pytest" tests/ -q -x
+
+[ "$fail" -eq 0 ] && echo "OK"
+exit "$fail"

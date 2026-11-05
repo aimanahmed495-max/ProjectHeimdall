@@ -1,0 +1,11 @@
+---
+description: Python conventions for the Heimdall codebase
+globs: backend/**/*.py, ai-brain/**/*.py, vision/**/*.py, tests/**/*.py
+alwaysApply: false
+---
+- Python 3.11 compatible, type hints on public functions, docstrings with Args/Returns.
+- Ruff rules E, F, I, C901 (max complexity 10). complexipy limit 15.
+- OSINT and vision talk to the backend only over HTTP. Never import `backend/` code from them.
+- Tests: pytest, no live network, no Groq, no ntfy.sh. Use the existing fakes in `ai-brain/tests/test_live_osint.py`.
+- Soft deletes only. New env vars go in that module's `.env.example`.
+- After edits run: `bash scripts/check`.

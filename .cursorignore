@@ -1,0 +1,12 @@
+.env
+.env.*
+!.env.example
+ai-brain/.env
+vision/.env
+.ai-log/
+*.pt
+vision/test_media/
+node_modules/
+tests/**/playwright-report/
+tests/**/test-results/
+htmlcov/
