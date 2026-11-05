@@ -86,6 +86,24 @@ Open <http://127.0.0.1:8001/>, submit a report, and the feed is at `/feed.xml`. 
 
 When two different registered sources classify the same `object_class` within `CORROBORATION_WINDOW_SECONDS` (default 300), the loop PATCHes those threat events to status `Corroborated` with `corroborated_at`, PUTs camera `CAMERA_ID` (default 1) to `Active`, and posts one system log. One source does not change the camera. The camera row must already exist. A second report of a category that already corroborated does not activate the camera again.
 
+## Demo reset and preflight
+
+Before a live demo, run from the repository root:
+
+```bash
+set -a; . ai-brain/.env; set +a
+bash scripts/demo_reset.sh
+```
+
+The script needs `curl` and `jq`. It reads `BASE_URL`, `OSINT_API_USERNAME`, `OSINT_API_PASSWORD`, `CAMERA_ID`, `NTFY_SERVER`, `NTFY_TOPIC`, and `RSS_FEED_URL` from the environment. Unset variables get the same defaults the OSINT module uses. It:
+
+1. Checks `GET /health` and stops if the API or database is down.
+2. Logs in with the OSINT service account.
+3. Reads camera `CAMERA_ID` (default 1) and PUTs it back to `Dormant` with its current fps and resolution. It stops if the camera row does not exist; seed it with `docker compose exec api python -m backend.app.seed`.
+4. Prints the commands for the RSS demo feed, the live OSINT loop, and one matching report for ntfy and for the demo feed.
+
+It warns when `NTFY_TOPIC` is unset or still the placeholder, because public ntfy topics are readable by anyone. Credentials and the access token are never printed and are not passed to `curl` as arguments. Any failed step exits with status 1.
+
 ## Test
 
 From the repository root:
