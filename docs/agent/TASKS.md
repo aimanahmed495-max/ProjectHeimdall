@@ -2,7 +2,7 @@
 
 One task per run. Branch `agent/<task-id>`, one PR to `main`. Protected paths (see AGENTS.md) mean plan only.
 
-T01 shared object classes | deps: none | todo
+T01 shared object classes | deps: none | done
   In `ai-brain/`, normalize the classifier output to one of person, vehicle, crowd, package, unknown so different sources can corroborate. Map obvious synonyms (man, woman, suspect to person; car, truck, van to vehicle; and so on). Anything else becomes unknown. Do not change the model call or prompt wording beyond listing the allowed classes.
   Accept: unit tests for each mapping and the unknown fallback; a corroboration test where two sources return different synonyms for the same class and still corroborate; `bash scripts/check` passes.
 

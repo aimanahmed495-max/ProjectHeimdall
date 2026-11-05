@@ -9,6 +9,7 @@ from typing import Any, Dict, Optional, TypedDict
 
 from langchain_groq import ChatGroq
 from langgraph.graph import END, START, StateGraph
+from object_classes import normalize_object_class
 from osint_client import HeimdallAPIClient, HeimdallAPIError
 from pydantic import BaseModel, Field, field_validator
 
@@ -25,13 +26,12 @@ class ThreatClassification(BaseModel):
 
     @field_validator("object_class")
     @classmethod
-    def normalize_object_class(cls, value: str) -> str:
-        """Trim and lowercase the predicted visual object class."""
+    def coerce_object_class(cls, value: str) -> str:
+        """Map the predicted label onto a shared object class."""
 
-        normalized = value.strip().lower()
-        if not normalized:
+        if not value.strip():
             raise ValueError("object_class cannot be empty.")
-        return normalized
+        return normalize_object_class(value)
 
 
 class OsintAgentState(TypedDict, total=False):
@@ -66,8 +66,8 @@ class OsintAgent:
         "edge-to-cloud surveillance system. Read a raw open-source "
         "alert and decide what a nearby camera should look for.\n\n"
         "Return structured JSON with:\n"
-        '- object_class: a short lowercase noun such as "person", '
-        '"vehicle", "crowd", "package", or "unknown"\n'
+        '- object_class: exactly one of "person", "vehicle", "crowd", '
+        '"package", or "unknown"\n'
         "- confidence_score: a float from 0.0 to 1.0\n\n"
         "Lower confidence when the report is unconfirmed, second-hand, "
         'or vague. Use object_class "unknown" when no visual object '

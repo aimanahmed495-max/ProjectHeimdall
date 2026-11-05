@@ -256,7 +256,7 @@ def test_activation_patches_then_puts_once():
     assert log_entry["event_id"] == 11
     assert log_entry["module"] == "osint-agent"
     assert "Active" in log_entry["message"]
-    assert "weapon" in log_entry["message"]
+    assert "unknown" in log_entry["message"]
     activation = [
         name
         for name, _args, _kwargs in client.method_calls
