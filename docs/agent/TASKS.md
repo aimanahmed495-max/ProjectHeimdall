@@ -34,7 +34,7 @@ T11 docstring pass, OSINT module | deps: T01, T03, T06 | done
   Google-style docstrings (Args, Returns, Raises) on every public class and method in `ai-brain/`. No behavior change.
   Accept: `bash scripts/check` passes; the diff contains only docstrings and comments.
 
-T12 OSINT QA log draft | deps: T03 | todo
+T12 OSINT QA log draft | deps: T03 | done
   `docs/qa/osint-qa-log.md`: test, edge case, severity (low/medium/high), result, resolution, linked issue (TODO if none). Only rows backed by a test that exists and was run.
   Accept: no row without a test behind it. Aiman posts it on the QA issue.
 
