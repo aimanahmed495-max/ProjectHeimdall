@@ -161,7 +161,8 @@ def test_corroborate_event_has_required_fields(caplog):
 
     [payload] = events(caplog, "corroborate")
     assert_required_fields(payload, "INFO")
-    assert payload["category"] == "weapon"
+    # Tracker normalizes free-form labels; ScriptedAgent still emits "weapon".
+    assert payload["category"] == "unknown"
     assert payload["event_ids"] == [11, 22]
     assert payload["source_ids"] == [1, 2]
     triggering = events(caplog, "classify")[-1]
@@ -249,7 +250,8 @@ def test_activation_error_event_has_required_fields(caplog):
     [payload] = events(caplog, "error")
     assert_required_fields(payload, "ERROR")
     assert payload["stage"] == "corroborate"
-    assert payload["category"] == "weapon"
+    # Tracker normalizes free-form labels; ScriptedAgent still emits "weapon".
+    assert payload["category"] == "unknown"
 
 
 def test_console_banner_is_unchanged(capsys, caplog):
