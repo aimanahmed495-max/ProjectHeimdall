@@ -30,7 +30,7 @@ T09 OSINT pipeline doc | deps: none | done
   Docs only. `docs/OSINT_PIPELINE.md`: data flow, source adapters, env variable table, failure behavior.
   Accept: the env table matches `ai-brain/.env.example` exactly; no variable invented.
 
-T11 docstring pass, OSINT module | deps: T01, T03, T06 | todo
+T11 docstring pass, OSINT module | deps: T01, T03, T06 | done
   Google-style docstrings (Args, Returns, Raises) on every public class and method in `ai-brain/`. No behavior change.
   Accept: `bash scripts/check` passes; the diff contains only docstrings and comments.
 

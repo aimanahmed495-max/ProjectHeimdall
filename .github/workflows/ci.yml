@@ -159,7 +159,7 @@ jobs:
 
 
   e2e:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
 
     env:
@@ -184,6 +184,7 @@ jobs:
 
       - name: Install Playwright Chromium
         working-directory: tests/e2e
+        timeout-minutes: 8
         run: npx playwright install --with-deps chromium
 
       - name: Start Heimdall services
