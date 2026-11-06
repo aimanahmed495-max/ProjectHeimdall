@@ -11,7 +11,13 @@ from object_classes import normalize_object_class
 
 @dataclass(frozen=True)
 class Corroboration:
-    """A category reported by two or more sources inside the window."""
+    """A category reported by two or more sources inside the window.
+
+    Attributes:
+        category: Normalized shared object class that corroborated.
+        event_ids: Threat-event ids inside the window for that class.
+        source_ids: Distinct Heimdall source ids that reported the class.
+    """
 
     category: str
     event_ids: Tuple[int, ...]
@@ -82,7 +88,11 @@ class CorroborationTracker:
         return self._build(key)
 
     def release(self, category: str) -> None:
-        """Allow ``category`` to fire again after a failed activation."""
+        """Allow ``category`` to fire again after a failed activation.
+
+        Args:
+            category: Object class (or synonym) whose fired lock is cleared.
+        """
 
         self._fired.discard(normalize_object_class(category))
 

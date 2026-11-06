@@ -30,7 +30,7 @@ T09 OSINT pipeline doc | deps: none | todo
   Docs only. `docs/OSINT_PIPELINE.md`: data flow, source adapters, env variable table, failure behavior.
   Accept: the env table matches `ai-brain/.env.example` exactly; no variable invented.
 
-T11 docstring pass, OSINT module | deps: T01, T03, T06 | todo
+T11 docstring pass, OSINT module | deps: T01, T03, T06 | done
   Google-style docstrings (Args, Returns, Raises) on every public class and method in `ai-brain/`. No behavior change.
   Accept: `bash scripts/check` passes; the diff contains only docstrings and comments.
 
@@ -38,7 +38,7 @@ T12 OSINT QA log draft | deps: T03 | done
   `docs/qa/osint-qa-log.md`: test, edge case, severity (low/medium/high), result, resolution, linked issue (TODO if none). Only rows backed by a test that exists and was run.
   Accept: no row without a test behind it. Aiman posts it on the QA issue.
 
-T13 OSINT README refresh | deps: T01 | todo
+T13 OSINT README refresh | deps: T01 | done
   `ai-brain/README.md` and the OSINT statements in `README.md`. Remove the stale claim that OSINT does not switch the camera. Document the flag, shared classes, the E2E suite, and the demo steps.
   Accept: no statement contradicts the code.
 
