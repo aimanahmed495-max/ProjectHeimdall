@@ -2,12 +2,13 @@
 
 Heimdall is a prototype for an edge-to-cloud surveillance workflow: open-source reports are classified into threat events, a vision pipeline posts object detections, and an operations console reads the shared record store. The modules in this repository talk to one FastAPI service and one PostgreSQL database. They do not call each other.
 
-This tree includes the core API, database migrations, authenticated OSINT ingestion from local mock alerts, YOLOv8 detection on still images, and a Streamlit operations console. OSINT classification does not switch the camera pipeline on or off. The vision pipeline uses files in `vision/test_media/` and does not open a hardware camera.
+This tree includes the core API, database migrations, authenticated OSINT ingestion (mock alerts by default; live ntfy/RSS behind `FEATURE_LIVE_OSINT`), YOLOv8 detection on still images, and a Streamlit operations console. On the live OSINT path, two independent sources that agree on the same shared object class inside the corroboration window set the configured camera Active. The vision pipeline uses files in `vision/test_media/` and does not open a hardware camera.
 
 More detail lives in [docs/](docs/):
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — components, schema, and login flow
 - [docs/DEVELOPER_SETUP.md](docs/DEVELOPER_SETUP.md) — setup, tests, and troubleshooting
+- [docs/OSINT_PIPELINE.md](docs/OSINT_PIPELINE.md) — OSINT data flow, adapters, env vars, failures
 - [docs/OWASP_AUDIT.md](docs/OWASP_AUDIT.md) — OWASP Top 10 (2021) review of this code
 
 ## Architecture
@@ -26,7 +27,7 @@ More detail lives in [docs/](docs/):
 ```
 
 - **`backend/`** — FastAPI service and Alembic migrations. Domain tables: `osint_sources`, `threat_events`, `alert_logs`, `camera_states`, `system_logs`. Authentication uses a separate `users` table. Data routes require a bearer token. `GET /health` is public.
-- **`ai-brain/`** — LangGraph pipeline. It logs in, registers mock sources, classifies mock alert text with Groq, and posts a threat event (`source_id` set, no camera id) plus a system log.
+- **`ai-brain/`** — LangGraph pipeline. Mock path: registers mock sources, classifies `mock_alerts.json` with Groq, posts threat events (`source_id` set, no camera id) and system logs. Live path (`FEATURE_LIVE_OSINT=true`): polls ntfy and RSS, normalizes classes to `person`/`vehicle`/`crowd`/`package`/`unknown`, and on corroboration PATCHes events to `Corroborated` and PUTs camera `CAMERA_ID` to `Active`.
 - **`vision/`** — YOLOv8n over still images from `vision/test_media/`. It logs in, sets camera `1` to `Active`, posts detections as threat events and system logs, then sets that camera to `Dormant`.
 - **`frontend/`** — Streamlit host for `frontend/heimdall_console.html`. After login the page polls `/sources`, `/threat-events`, `/alert-logs`, `/camera-states`, and `/system-logs`.
 
@@ -41,7 +42,7 @@ More detail lives in [docs/](docs/):
 - Create, list, fetch, acknowledge, and soft-delete alert logs
 - Register and update camera state (`Dormant` or `Active`)
 - Create and list system logs
-- Mock OSINT ingestion and still-image detection posting into that API
+- Mock OSINT ingestion, optional live ntfy/RSS corroboration that activates a camera, and still-image detection posting into that API
 - Operations console with login, registration, and a five-second refresh of those collections
 - Idempotent demo seed (`backend/app/seed.py`)
 
@@ -107,6 +108,14 @@ Root `.env` (Compose, API, and console), from `.env.example`:
 - `BASE_URL`
 - `OSINT_API_USERNAME`
 - `OSINT_API_PASSWORD`
+- `FEATURE_LIVE_OSINT`
+- `NTFY_SERVER`
+- `NTFY_TOPIC`
+- `RSS_FEED_URL`
+- `OSINT_POLL_SECONDS`
+- `OSINT_KEYWORDS`
+- `CORROBORATION_WINDOW_SECONDS`
+- `CAMERA_ID`
 
 `vision/.env`, from `vision/.env.example`:
 
@@ -127,6 +136,10 @@ pytest backend/tests --cov=backend.app --cov-report=term-missing --cov-fail-unde
 # OSINT unit tests (HTTP and Groq are mocked)
 pytest ai-brain/tests -q
 
+# OSINT pipeline E2E (real API subprocess + test Postgres; no Groq/ntfy)
+# Deselected by default via addopts; not the Playwright suite in tests/e2e/
+pytest -m e2e tests/e2e_pipeline -q
+
 # Vision has no vision/tests directory yet. CI skips pytest in that case.
 pytest vision/tests -q
 
@@ -138,7 +151,7 @@ npm ci --prefix tests/frontend-console
 npm test --prefix tests/frontend-console
 ```
 
-`pyproject.toml` sets pytest `testpaths` to `tests/`, so a bare `pytest` does not collect `backend/tests` or `ai-brain/tests`. Pass those paths.
+`pyproject.toml` sets pytest `testpaths` to `tests/`, so a bare `pytest` does not collect `backend/tests` or `ai-brain/tests`. Pass those paths. The `e2e` marker is deselected by default so `pytest tests/` stays Playwright-free of the pipeline suite.
 
 Lint and complexity, matching CI:
 
