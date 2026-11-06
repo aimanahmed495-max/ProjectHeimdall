@@ -33,7 +33,39 @@ const consoleFrame = page.frameLocator("iframe").first();
   await expect(consoleFrame.locator("#coreApiRecords")).toContainText(
     "events"
   );
+  await consoleFrame.locator('[data-view="history"]').click();
+  await expect(consoleFrame.locator("#viewHistory")).toBeVisible();
 
+  const historyRows = consoleFrame.locator("#hBody tr[data-row]");
+  await expect(historyRows.first()).toBeVisible();
+  const initialRowCount = await historyRows.count();
+  expect(initialRowCount).toBeGreaterThan(0);
+
+  const statusFilter = consoleFrame.locator("#hStatus");
+  const statusOptions = await statusFilter.locator("option").evaluateAll(
+    options => options.map(option => option.value)
+  );
+
+  expect(statusOptions).toEqual([
+    "",
+    "Pending",
+    "Corroborated",
+    "Resolved",
+  ]);
+
+  await statusFilter.selectOption("Pending");
+
+  const displayedStatuses = await consoleFrame
+    .locator("#hBody tr[data-row] td:nth-child(7)")
+    .allTextContents();
+
+  expect(displayedStatuses.length).toBeGreaterThan(0);
+  expect(displayedStatuses.every(status => status === "Pending")).toBe(true);
+
+  await consoleFrame.locator("#hReset").click();
+  await expect(statusFilter).toHaveValue("");
+  await expect(historyRows.first()).toBeVisible();
+  expect(await historyRows.count()).toBeGreaterThan(0);
   await consoleFrame.locator("#logoutButton").click();
   await expect(consoleFrame.locator("#authGate")).toBeVisible();
 });
