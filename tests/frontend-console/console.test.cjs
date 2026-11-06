@@ -220,6 +220,75 @@ async function boot(data=records){
    assert.equal(t.d.querySelectorAll('[data-source-row]').length,1);assert.match(t.d.querySelector('#toasts').textContent,/Could not confirm source deletion/);
   }finally{t.close()}
  });
+ await test('history filters current threat statuses and resets', async () => {
+  const data = structuredClone(records);
+  const statuses = ['Pending', 'Corroborated', 'Resolved'];
 
+  data['/threat-events'] = statuses.map((status, i) => ({
+   ...records['/threat-events'][0],
+   event_id: 101 + i,
+   timestamp: new Date().toISOString(),
+   status
+  }));
+  data['/alert-logs'] = [];
+
+  const t = await boot(data);
+  try {
+   await t.login();
+   const filter = t.d.querySelector('#hStatus');
+
+   assert.deepEqual(
+    Array.from(filter.options, option => option.value),
+    ['', ...statuses]
+   );
+
+   const rows = () => Array.from(
+    t.d.querySelectorAll('#hBody tr[data-row]')
+   );
+
+   assert.equal(rows().length, 3);
+
+   for (const status of statuses) {
+    filter.value = status;
+    filter.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+
+    assert.equal(rows().length, 1);
+    assert.equal(rows()[0].cells[6].textContent, status);
+   }
+
+   filter.value = '';
+   filter.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+   assert.equal(rows().length, 3);
+
+   filter.value = 'Resolved';
+   filter.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+   t.d.querySelector('#hReset').click();
+
+   assert.equal(filter.value, '');
+   assert.equal(rows().length, 3);
+   assert.equal(t.errors.length, 0, t.errors.join('\n'));
+  } finally {
+   t.close();
+  }
+ });
+
+ await test('rule filter offers current threat statuses', async () => {
+  const t = await boot();
+  try {
+   await t.login();
+
+   const field = t.d.querySelector('#rField');
+   field.value = 'status';
+   field.dispatchEvent(new t.w.Event('change', { bubbles: true }));
+
+   assert.deepEqual(
+    Array.from(t.d.querySelector('#rVal').options, option => option.value),
+    ['Pending', 'Corroborated', 'Resolved']
+   );
+   assert.equal(t.errors.length, 0, t.errors.join('\n'));
+  } finally {
+   t.close();
+  }
+ });
  console.log(`${passed} tests passed`);
 })().catch(e=>{console.error(e);process.exitCode=1});
