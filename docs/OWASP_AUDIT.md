@@ -121,11 +121,11 @@ The same design gives every registered user full read and write access, leaves r
 
 `GET /auth/me` returns the user for that token. Inactive or soft-deleted users fail both login and later requests. The OSINT client (`ai-brain/osint_client.py`) and the vision client (`vision/vision_client.py`) post to `/auth/login` and send `Authorization: Bearer` on later calls. The vision client re-authenticates once and retries when a later request returns HTTP 401, so a long-lived runner can survive `JWT_ACCESS_TOKEN_MINUTES` expiry without restarting. The OSINT client does not yet retry on 401. Both the mock path and the live path in `ai-brain/main.py` call `HeimdallAPIClient.authenticate()` with `OSINT_API_USERNAME` and `OSINT_API_PASSWORD` before registering sources or polling feeds. The live path also calls `GET /auth/me` through `current_user_id()` so JSON pipeline logs can tag `user_id` (`ai-brain/osint_logging.py`). The console (`frontend/heimdall_console.html`) logs in the same way, then calls `/auth/me`, and clears the password field after the attempt. Logout in the console drops the in-memory token only. There is no logout route.
 
-No module under `backend/app/` implements login rate limiting, an attempt counter, or account lockout. The console maps HTTP 429 to a “too many attempts” string, and the API never returns 429. A login rate-limit design exists as plan-only in `docs/agent/plans/T17.md`; it is not wired into `backend/app/auth.py`.
+`backend/app/rate_limit.py` implements an in-memory sliding-window limiter wired into `POST /auth/login` in `backend/app/auth.py`. Failures are keyed by `(client IP, lowercased username)` with a looser per-IP cap across usernames. Defaults are `LOGIN_MAX_FAILURES=5`, `LOGIN_IP_MAX_FAILURES=50`, and `LOGIN_FAILURE_WINDOW_SECONDS=900` (root `.env.example`). The check runs before the user lookup and Argon2 verify. Over the limit, the API returns HTTP 429 with detail `Too many failed login attempts. Try again later.` and a `Retry-After` header. A successful login clears that (IP, username) counter but not the IP counter. `LOGIN_MAX_FAILURES=0` disables the limiter. State lives in one process, is lost on restart, and is not shared across workers; under Docker Desktop, host clients often share one NAT IP. The console already maps HTTP 429 to a “too many attempts” string (`frontend/heimdall_console.html`). There is still no hard account lockout.
 
 **Status: Partial.**
 
-**Remaining gap.** Login rate limiting and account lockout are absent. Tokens cannot be revoked before expiry. The live OSINT service account authenticates once at startup over the same unprotected login route.
+**Remaining gap.** Tokens cannot be revoked before expiry. There is no account lockout. The live OSINT service account authenticates once at startup over the same login route (a 429 at startup fails loudly via `HeimdallAPIError`).
 
 ## A08 Software and Data Integrity Failures
 
@@ -149,13 +149,13 @@ Alembic revisions in `backend/alembic/versions/` are the schema history. Current
 
 The live OSINT loop writes JSON lines to stderr (`ai-brain/osint_logging.py`, configured from `ai-brain/main.py` `_run_live`, emitted from `ai-brain/live_osint.py` and `ai-brain/keyword_filter.py`). Each classify, corroborate, keyword-drop, and error event carries `timestamp`, `level`, `request_id` (one per source poll and one per classified item), and `user_id` (the OSINT service account, read from `GET /auth/me` in `ai-brain/osint_client.py`). Events log the exception message and alert metadata, not credentials or the bearer token. They are not shipped anywhere; they stay on the process's stderr. The default mock path does not enable that JSON stream.
 
-`backend/app/` does not import a logger and does not write login success, login failure, or registration to `system_logs` or anywhere else. Uvicorn is started with no custom log configuration. There is no metrics or alerting service in Compose.
+`backend/app/rate_limit.py` emits one `WARNING` the first time a login key reaches its failure limit, including the client IP, lowercased username, and which limit tripped. It does not log passwords or request bodies. `backend/app/` still does not write login success, ordinary login failure, or registration to `system_logs` or anywhere else. Uvicorn is started with no custom log configuration. There is no metrics or alerting service in Compose.
 
 TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets. That is a CI integrity check, not runtime monitoring of the API.
 
 **Status: Partial.**
 
-**Remaining gap.** No authentication or authorization audit trail. `system_logs` is caller-supplied application text, so any authenticated user can insert a log line. Live pipeline JSON logs improve OSINT observability but are not an auth audit log and are not retained by the API. Nothing in the repo alerts on repeated failed logins.
+**Remaining gap.** No full authentication or authorization audit trail. `system_logs` is caller-supplied application text, so any authenticated user can insert a log line. Live pipeline JSON logs improve OSINT observability but are not an auth audit log and are not retained by the API. The rate-limit WARNING is the only backend auth security event; ordinary failures are still unlogged.
 
 ## A10 Server-Side Request Forgery
 
@@ -218,16 +218,16 @@ The schema has no email, phone, or street-address columns. Vision posts class na
 | A04 Insecure Design | Yes | Partial | Single privilege level for every account. Live corroboration gates camera Active (Bluesky uses `indexedAt` and one source id for all watched accounts); any auth user can still PUT camera state. |
 | A05 Security Misconfiguration | Yes | Partial | Docs, root containers, and published Postgres. Secrets come from the environment. |
 | A06 Vulnerable and Outdated Components | Yes | Partial | Accepted `pip-audit` ignores. Unpinned OSINT deps. Frontend job has no `pip-audit`. |
-| A07 Identification and Authentication Failures | Yes | Partial | Hashed passwords and bearer JWTs. Mock and live OSINT share `/auth/login`. No rate limit or lockout. |
+| A07 Identification and Authentication Failures | Yes | Partial | Hashed passwords and bearer JWTs. Mock and live OSINT share `/auth/login`. In-memory login rate limit returns 429; no lockout or token revocation. |
 | A08 Software and Data Integrity Failures | Yes | Partial | CI, Alembic, Dependabot, TruffleHog. Unpinned OSINT deps and unsigned YOLO weights. |
-| A09 Security Logging and Monitoring Failures | Yes | Partial | No auth audit log. Live OSINT JSON stderr logs exist. `system_logs` is client-written. |
+| A09 Security Logging and Monitoring Failures | Yes | Partial | Rate-limit WARNING on first trip. No full auth audit log. Live OSINT JSON stderr logs exist. `system_logs` is client-written. |
 | A10 Server-Side Request Forgery | Yes | Partial | API does not fetch stored URLs. Live OSINT GETs env-configured ntfy, RSS, and optional Bluesky AppView with no allowlist. |
 
 ## Open items
 
 1. Add an authorization model. Today every active user can call every data route (`backend/app/main.py`).
 2. Turn off public registration after service accounts exist (`ENABLE_USER_REGISTRATION` defaults to `true`).
-3. Add login rate limiting and lockout. Neither exists under `backend/app/`. Plan-only design: `docs/agent/plans/T17.md`.
+3. Add account lockout and/or durable multi-worker login limiting. In-memory per-process rate limiting is in `backend/app/rate_limit.py` (see `docs/agent/plans/T17.md`); it is lost on restart and does not lock accounts.
 4. Add a way to revoke access tokens before `exp`, or document a short lifetime as the only control. Logout is client-side only.
 5. Plan TLS before any host other than localhost. Compose exposes HTTP ports only.
 6. Clear the accepted backend audit ignores when the major upgrades land: `PYSEC-2026-1845` (pytest) and `PYSEC-2026-161`, `PYSEC-2026-248`, `PYSEC-2026-249`, `PYSEC-2026-2280`, `PYSEC-2026-2281` (Starlette via FastAPI). See comments in `.github/workflows/ci.yml`.

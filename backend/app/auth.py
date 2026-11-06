@@ -3,7 +3,7 @@
 import os
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jwt import InvalidTokenError
 from sqlalchemy import select
@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 
 from . import models, schemas
 from .database import get_db
+from .rate_limit import login_rate_limiter
 from .security import (
     create_access_token,
     decode_access_token,
@@ -117,13 +118,24 @@ def register_user(
 )
 def login_user(
     login_data: schemas.UserLogin,
+    request: Request,
     db: Session = Depends(get_db),
 ):
     """Validate credentials and return a signed access token."""
 
+    ip = request.client.host if request.client else "unknown"
+    username = login_data.username.lower()
+    retry_seconds = login_rate_limiter.retry_after(ip, username)
+    if retry_seconds is not None:
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many failed login attempts. Try again later.",
+            headers={"Retry-After": str(retry_seconds)},
+        )
+
     user = db.scalar(
         select(models.User).where(
-            models.User.username == login_data.username.lower(),
+            models.User.username == username,
             models.User.is_active.is_(True),
             models.User.deleted_at.is_(None),
         )
@@ -133,8 +145,10 @@ def login_user(
         login_data.password,
         user.password_hash,
     ):
+        login_rate_limiter.record_failure(ip, username)
         raise authentication_error()
 
+    login_rate_limiter.record_success(ip, username)
     return schemas.TokenResponse(
         access_token=create_access_token(user.user_id),
     )

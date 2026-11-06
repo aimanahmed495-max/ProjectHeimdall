@@ -54,9 +54,9 @@ T16 vision trigger-driven activation (#34) | deps: T02 | done
   Webcam or video-file frames into YOLOv8n, `vision/` no longer activates the camera itself, activation comes from corroboration, detections post as threat events with the camera ID, `FEATURE_PI_CAMERA` (default off) selects the source.
   Accept: plan in `docs/agent/plans/T16.md`; build after Aiman approved it.
 
-T17 login rate limiting | deps: none | todo
-  Plan only (touches `backend/app/auth.py`). Closes the OWASP A07 gap. Confirm no teammate owns auth first.
-  Accept: plan in `docs/agent/plans/T17.md`.
+T17 login rate limiting | deps: none | done
+  In-memory login rate limiting on `POST /auth/login` (plan in `docs/agent/plans/T17.md`). Closes the OWASP A07 gap for unlimited attempts. Touches `backend/app/auth.py` under Team Lead authorization.
+  Accept: failed logins return 429 with `Retry-After` after the limit; success resets the per-user counter; `bash scripts/check` passes.
 
 T18 Raspberry Pi camera, stretch | deps: T16 | hold
   `PiCameraStream`, a capture service with `/activate` and `/deactivate`, and a log of time from activation to first frame.
