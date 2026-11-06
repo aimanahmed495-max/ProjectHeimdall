@@ -32,13 +32,22 @@ class RssAdapter(SourceAdapter):
 
     @classmethod
     def from_env(cls) -> "RssAdapter":
-        """Build an adapter from ``RSS_FEED_URL``."""
+        """Build an adapter from ``RSS_FEED_URL``.
+
+        Returns:
+            An adapter pointed at the configured feed URL, or the local
+            demo default when the env value is unset.
+        """
 
         feed_url = os.getenv("RSS_FEED_URL", cls.DEFAULT_FEED_URL)
         return cls(feed_url=feed_url)
 
     def registration_payload(self) -> Dict[str, Any]:
-        """Return the ``POST /sources`` body for the local RSS feed."""
+        """Return the ``POST /sources`` body for the local RSS feed.
+
+        Returns:
+            An ``OsintSourceCreate`` dict for this feed URL.
+        """
 
         return {
             "source_name": self.SOURCE_NAME,

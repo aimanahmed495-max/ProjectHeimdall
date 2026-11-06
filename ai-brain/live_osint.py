@@ -25,7 +25,16 @@ class AlertAgent(Protocol):
     """The subset of ``OsintAgent`` the live loop needs."""
 
     def run(self, alert_text: str, source_id: int) -> Dict[str, Any]:
-        """Classify one alert and post its threat event."""
+        """Classify one alert and post its threat event.
+
+        Args:
+            alert_text: Raw report text from a source adapter.
+            source_id: Heimdall ``osint_sources.source_id`` for the report.
+
+        Returns:
+            Agent result dict with ``object_class``, ``confidence_score``,
+            optional ``threat_event``, and optional ``error``.
+        """
 
 
 class LiveOsintRunner:

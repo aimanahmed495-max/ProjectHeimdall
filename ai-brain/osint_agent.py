@@ -15,11 +15,20 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class OsintAgentError(Exception):
-    """Raised when the OSINT agent cannot be constructed or run."""
+    """Raised when the OSINT agent cannot be constructed or run.
+
+    Covers a missing Groq key and unparseable model output.
+    """
 
 
 class ThreatClassification(BaseModel):
-    """Structured LLM output for a single OSINT alert."""
+    """Structured LLM output for a single OSINT alert.
+
+    Attributes:
+        object_class: Normalized shared class after synonym mapping.
+        confidence_score: Model confidence in the closed interval
+            ``[0.0, 1.0]``.
+    """
 
     object_class: str = Field(min_length=1, max_length=100)
     confidence_score: float = Field(ge=0, le=1)
@@ -27,7 +36,18 @@ class ThreatClassification(BaseModel):
     @field_validator("object_class")
     @classmethod
     def coerce_object_class(cls, value: str) -> str:
-        """Map the predicted label onto a shared object class."""
+        """Map the predicted label onto a shared object class.
+
+        Args:
+            value: Free-form class string from the model.
+
+        Returns:
+            One of the shared object classes from
+            :func:`object_classes.normalize_object_class`.
+
+        Raises:
+            ValueError: ``value`` is blank after stripping.
+        """
 
         if not value.strip():
             raise ValueError("object_class cannot be empty.")
@@ -35,7 +55,17 @@ class ThreatClassification(BaseModel):
 
 
 class OsintAgentState(TypedDict, total=False):
-    """Shared state passed between LangGraph nodes in the OSINT pipeline."""
+    """Shared state passed between LangGraph nodes in the OSINT pipeline.
+
+    Attributes:
+        alert_text: Normalized alert body.
+        object_class: Shared visual class predicted for the alert.
+        confidence_score: Model confidence for ``object_class``.
+        threat_event: Created threat-event record, when posted.
+        system_log: Created system-log record, when posted.
+        error: Failure message when a node could not finish.
+        source_id: Heimdall source that produced the alert.
+    """
 
     alert_text: str
     object_class: str
@@ -107,7 +137,16 @@ class OsintAgent:
         self._graph = self._build_graph()
 
     def run(self, alert_text: str, source_id: int) -> OsintAgentState:
-        """Run the pipeline for one source-attributed OSINT alert."""
+        """Run the pipeline for one source-attributed OSINT alert.
+
+        Args:
+            alert_text: Raw report text to classify.
+            source_id: Heimdall ``osint_sources.source_id`` for the alert.
+
+        Returns:
+            Final graph state, including classification fields and any
+            ``error`` set by a node.
+        """
 
         result = self._graph.invoke(
             {

@@ -15,7 +15,11 @@ _user_id: ContextVar[Optional[int]] = ContextVar("user_id", default=None)
 
 
 def new_request_id() -> str:
-    """Return a fresh correlation id for one unit of pipeline work."""
+    """Return a fresh correlation id for one unit of pipeline work.
+
+    Returns:
+        A hex UUID string suitable for the ``request_id`` log field.
+    """
 
     return uuid.uuid4().hex
 
@@ -63,6 +67,9 @@ def log_event(
         event: Short machine-readable event name, such as ``classify``.
         message: Human-readable summary.
         **fields: Extra JSON fields for this event.
+
+    Returns:
+        ``None``. The record is emitted on ``logger``.
     """
 
     logger.log(
@@ -114,7 +121,11 @@ class JsonFormatter(logging.Formatter):
 
 
 def configure_logging() -> None:
-    """Send INFO and above to stderr as JSON lines, unless already configured."""
+    """Send INFO and above to stderr as JSON lines, unless already configured.
+
+    Returns:
+        ``None``. Existing root handlers are left unchanged.
+    """
 
     root = logging.getLogger()
     if root.handlers:

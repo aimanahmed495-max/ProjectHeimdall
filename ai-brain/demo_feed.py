@@ -22,7 +22,14 @@ from urllib.parse import parse_qs, urlparse
 
 @dataclass(frozen=True)
 class DemoItem:
-    """One report held by the demo feed."""
+    """One report held by the demo feed.
+
+    Attributes:
+        guid: Stable RSS ``guid`` for the report.
+        title: Short item title shown in the feed.
+        description: Report body submitted through the form.
+        published: UTC time the item was stored.
+    """
 
     guid: str
     title: str
@@ -60,7 +67,11 @@ class DemoFeedStore:
         return item
 
     def items(self) -> List[DemoItem]:
-        """Return the reports posted so far, oldest first."""
+        """Return the reports posted so far, oldest first.
+
+        Returns:
+            A shallow copy of the stored items in insertion order.
+        """
 
         return list(self._items)
 
@@ -71,7 +82,12 @@ class DemoFeedServer(ThreadingHTTPServer):
     allow_reuse_address = True
 
     def __init__(self, port: int, store: DemoFeedStore) -> None:
-        """Listen on loopback for ``port`` and keep ``store``."""
+        """Listen on loopback for ``port`` and keep ``store``.
+
+        Args:
+            port: TCP port bound on ``127.0.0.1``.
+            store: In-memory feed shared by every request handler.
+        """
 
         self.feed_store = store
         super().__init__(("127.0.0.1", port), DemoFeedHandler)
@@ -81,7 +97,11 @@ class DemoFeedHandler(BaseHTTPRequestHandler):
     """Serve the form, the RSS document, and the item submission route."""
 
     def do_GET(self) -> None:
-        """Return the form or the RSS document."""
+        """Return the form or the RSS document.
+
+        Routes ``/`` to the HTML form and ``/feed.xml`` to RSS. Any other
+        path returns ``404``.
+        """
 
         path = urlparse(self.path).path
         if path == "/feed.xml":
@@ -93,7 +113,11 @@ class DemoFeedHandler(BaseHTTPRequestHandler):
         self._send(404, "text/plain; charset=utf-8", b"Not found")
 
     def do_POST(self) -> None:
-        """Store a form submission posted to ``/items``."""
+        """Store a form submission posted to ``/items``.
+
+        Non-``/items`` paths return ``404``. Empty text is ignored and the
+        browser is still redirected to the form.
+        """
 
         if urlparse(self.path).path != "/items":
             self._send(404, "text/plain; charset=utf-8", b"Not found")
@@ -146,7 +170,11 @@ class DemoFeedHandler(BaseHTTPRequestHandler):
 
 
 def build_form_page() -> str:
-    """Return the demo page with a text box and a Submit button."""
+    """Return the demo page with a text box and a Submit button.
+
+    Returns:
+        HTML document string for ``GET /``.
+    """
 
     return """<!DOCTYPE html>
 <html lang="en">
@@ -168,7 +196,15 @@ def build_rss(
     items: Sequence[DemoItem],
     link: str = "http://127.0.0.1:8001/",
 ) -> str:
-    """Return an RSS 2.0 document for ``items``."""
+    """Return an RSS 2.0 document for ``items``.
+
+    Args:
+        items: Reports to render as RSS ``item`` elements.
+        link: Channel ``link`` URL written into the document.
+
+    Returns:
+        Complete RSS 2.0 XML document as a string.
+    """
 
     rendered = "".join(_rss_item(item) for item in items)
     safe_link = xml_escape(link)
@@ -186,7 +222,14 @@ def build_rss(
 
 
 def text_from_form(body: bytes) -> str:
-    """Return the ``text`` field from an HTML form body."""
+    """Return the ``text`` field from an HTML form body.
+
+    Args:
+        body: Raw ``application/x-www-form-urlencoded`` request body.
+
+    Returns:
+        Stripped ``text`` value, or ``""`` when the field is absent.
+    """
 
     parsed = parse_qs(body.decode("utf-8", errors="replace"))
     values = parsed.get("text", [])
@@ -196,7 +239,14 @@ def text_from_form(body: bytes) -> str:
 
 
 def read_request_body(handler: BaseHTTPRequestHandler) -> bytes:
-    """Read the request body, capped so a huge post cannot fill memory."""
+    """Read the request body, capped so a huge post cannot fill memory.
+
+    Args:
+        handler: Active HTTP request handler whose body should be read.
+
+    Returns:
+        Up to 8192 bytes of the request body, or ``b""`` when empty.
+    """
 
     length = _content_length(handler.headers.get("Content-Length", "0"))
     if length <= 0:
@@ -205,7 +255,11 @@ def read_request_body(handler: BaseHTTPRequestHandler) -> bytes:
 
 
 def demo_port() -> int:
-    """Return ``DEMO_FEED_PORT``, or 8001 when the value is unusable."""
+    """Return ``DEMO_FEED_PORT``, or 8001 when the value is unusable.
+
+    Returns:
+        A TCP port in ``1..65535``.
+    """
 
     raw = os.getenv("DEMO_FEED_PORT", "8001")
     try:
@@ -218,7 +272,11 @@ def demo_port() -> int:
 
 
 def serve() -> None:
-    """Listen until Ctrl+C."""
+    """Listen until Ctrl+C.
+
+    Returns:
+        ``None`` after the server shuts down.
+    """
 
     port = demo_port()
     server = DemoFeedServer(port, DemoFeedStore())
@@ -247,7 +305,14 @@ def _rss_item(item: DemoItem) -> str:
 
 
 def xml_escape(value: str) -> str:
-    """Escape text for an XML element body."""
+    """Escape text for an XML element body.
+
+    Args:
+        value: Untrusted text to place inside an XML element.
+
+    Returns:
+        ``value`` with ``&``, ``<``, and ``>`` escaped.
+    """
 
     return escape(value, quote=False)
 
@@ -265,7 +330,11 @@ def _content_length(raw: str) -> int:
 
 
 def main() -> None:
-    """Entrypoint used by ``python ai-brain/demo_feed.py``."""
+    """Entrypoint used by ``python ai-brain/demo_feed.py``.
+
+    Returns:
+        ``None`` after :func:`serve` exits.
+    """
 
     serve()
 

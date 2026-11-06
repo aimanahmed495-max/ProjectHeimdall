@@ -10,7 +10,14 @@ from typing import Any, Dict, Iterator, List, Set
 
 @dataclass(frozen=True)
 class SourceItem:
-    """One report yielded by a source adapter."""
+    """One report yielded by a source adapter.
+
+    Attributes:
+        source_name: Heimdall ``osint_sources.source_name`` for the adapter.
+        text: Report body passed to the keyword filter and classifier.
+        timestamp: When the source published the report.
+        external_id: Stable id used to deduplicate across polls.
+    """
 
     source_name: str
     text: str
@@ -33,16 +40,30 @@ class SourceAdapter(ABC):
 
     @property
     def source_name(self) -> str:
-        """Return the Heimdall source name for this adapter."""
+        """Return the Heimdall source name for this adapter.
+
+        Returns:
+            The ``source_name`` passed to the constructor.
+        """
 
         return self._source_name
 
     @abstractmethod
     def registration_payload(self) -> Dict[str, Any]:
-        """Return an ``OsintSourceCreate`` body for this adapter."""
+        """Return an ``OsintSourceCreate`` body for this adapter.
+
+        Returns:
+            Dict with ``source_name``, ``source_type``, ``url``, and
+            ``reliability_score``.
+        """
 
     def poll(self) -> Iterator[SourceItem]:
-        """Yield new items, skipping external ids already returned."""
+        """Yield new items, skipping external ids already returned.
+
+        Yields:
+            :class:`SourceItem` values whose ``external_id`` has not been
+            returned by a previous ``poll`` call.
+        """
 
         for item in self._fetch_items():
             if not self._remember(item.external_id):
