@@ -6,7 +6,17 @@ from sqlalchemy.orm import Session
 from backend.app import models
 from backend.app.database import engine, get_db
 from backend.app.main import app
+from backend.app.rate_limit import login_rate_limiter
 from backend.app.security import create_access_token, hash_password
+
+
+@pytest.fixture(autouse=True)
+def reset_login_rate_limiter():
+    """Keep module-level limiter state from leaking between tests."""
+
+    login_rate_limiter.reset()
+    yield
+    login_rate_limiter.reset()
 
 
 @pytest.fixture
