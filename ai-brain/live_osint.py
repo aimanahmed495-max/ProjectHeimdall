@@ -8,13 +8,19 @@ from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Protocol, Sequence
 
 import requests
+from bluesky_adapter import BlueskyAdapter
 from camera_activation import CameraActivator
 from corroboration import Corroboration, CorroborationTracker
 from keyword_filter import KeywordFilter
 from ntfy_adapter import NtfyAdapter
 from osint_client import HeimdallAPIClient, HeimdallAPIError
 from osint_logging import log_context, log_event, new_request_id
-from osint_settings import camera_id, corroboration_window_seconds, poll_seconds
+from osint_settings import (
+    bluesky_enabled,
+    camera_id,
+    corroboration_window_seconds,
+    poll_seconds,
+)
 from rss_adapter import RssAdapter
 from source_adapter import SourceAdapter, SourceItem
 
@@ -122,11 +128,17 @@ class LiveOsintRunner:
         self,
         adapters: Optional[Sequence[SourceAdapter]],
     ) -> List[SourceAdapter]:
-        """Use the injected adapters, or the ntfy and RSS defaults."""
+        """Use the injected adapters, or the configured live defaults."""
 
         if adapters is not None:
             return list(adapters)
-        return [NtfyAdapter.from_env(), RssAdapter.from_env()]
+        selected: List[SourceAdapter] = [
+            NtfyAdapter.from_env(),
+            RssAdapter.from_env(),
+        ]
+        if bluesky_enabled():
+            selected.append(BlueskyAdapter.from_env())
+        return selected
 
     def _existing_ids(self) -> Dict[str, int]:
         """Map source names already stored by the API."""

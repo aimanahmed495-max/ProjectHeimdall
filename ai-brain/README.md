@@ -3,7 +3,7 @@
 Authenticated LangGraph pipeline that turns open-source reports into source-attributed Heimdall threat events. Two paths share the same API client and classifier:
 
 - **Mock** (`FEATURE_LIVE_OSINT` off, the default): classify `mock_alerts.json` once and exit. No corroboration, no camera change.
-- **Live** (`FEATURE_LIVE_OSINT=true`): poll ntfy and RSS, classify keyword matches, and set camera `CAMERA_ID` Active when two distinct sources agree on the same shared object class inside the corroboration window.
+- **Live** (`FEATURE_LIVE_OSINT=true`): poll ntfy and RSS (and Bluesky when `FEATURE_BLUESKY` is on), classify keyword matches, and set camera `CAMERA_ID` Active when two distinct sources agree on the same shared object class inside the corroboration window.
 
 The module uses the real `/auth/login`, `/sources`, `/threat-events`, `/camera-states`, and `/system-logs` endpoints. It does not start Docker or the backend itself. Deeper flow and failure notes live in [docs/OSINT_PIPELINE.md](../docs/OSINT_PIPELINE.md).
 
@@ -43,13 +43,16 @@ FEATURE_LIVE_OSINT=false
 NTFY_SERVER=https://ntfy.sh
 NTFY_TOPIC=heimdall-demo-change-me
 RSS_FEED_URL=http://localhost:8001/feed.xml
+FEATURE_BLUESKY=false
+BLUESKY_APPVIEW_URL=https://public.api.bsky.app
+BLUESKY_ACTORS=replace-with-demo-handle.bsky.social
 OSINT_POLL_SECONDS=5
 OSINT_KEYWORDS=shots,gun,weapon,armed,fire,explosion,suspicious,fight,robbery,threat
 CORROBORATION_WINDOW_SECONDS=300
 CAMERA_ID=1
 ```
 
-`FEATURE_LIVE_OSINT` accepts `1`, `true`, `yes`, or `on` (any case) for the live path; anything else keeps the mock path. The `.env` file is ignored by Git. Do not commit real API keys or passwords.
+`FEATURE_LIVE_OSINT` and `FEATURE_BLUESKY` accept `1`, `true`, `yes`, or `on` (any case). Anything else leaves the flag off. Bluesky is only wired when live OSINT is on. The `.env` file is ignored by Git. Do not commit real API keys or passwords.
 
 ## Shared object classes
 
@@ -74,10 +77,13 @@ The process prints authentication status, source registration, Groq classificati
 
 ## Live sources
 
-Set `FEATURE_LIVE_OSINT=true` in `ai-brain/.env` to poll two public sources instead of the mock files:
+Set `FEATURE_LIVE_OSINT=true` in `ai-brain/.env` to poll public sources instead of the mock files:
 
 - ntfy topic `NTFY_TOPIC` on `NTFY_SERVER` (a normal HTTP poll, not a stream)
 - RSS document `RSS_FEED_URL` (default `http://localhost:8001/feed.xml`)
+- Bluesky author feeds when `FEATURE_BLUESKY=true` (default off)
+
+Bluesky is a short watchlist, not keyword search. With the flag on, `BlueskyAdapter` polls unauthenticated `app.bsky.feed.getAuthorFeed` on `BLUESKY_APPVIEW_URL` (default `https://public.api.bsky.app`) for each handle or DID in `BLUESKY_ACTORS` (comma-separated, at most 10). Only list accounts the team owns or public agency accounts. Unauthenticated Bluesky keyword search is unreliable and is not used. All watched accounts register as one Heimdall source (`bluesky-watchlist`, reliability 0.5), so two Bluesky accounts never corroborate each other; a Bluesky tip still corroborates with ntfy or RSS. For the demo, post a matching tip from the team Bluesky account while ntfy or RSS also reports the same class.
 
 Start the local RSS demo, which uses only the Python standard library:
 

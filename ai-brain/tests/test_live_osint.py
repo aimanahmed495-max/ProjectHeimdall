@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import Mock
 
 import pytest
+from bluesky_adapter import BlueskyAdapter
 from camera_activation import CameraActivator
 from corroboration import CorroborationTracker
 from keyword_filter import KeywordFilter
@@ -437,7 +438,146 @@ def test_default_adapters_poll_ntfy_and_rss(monkeypatch):
         for url in requested
     )
     assert "http://localhost:8001/feed.xml" in requested
+    assert not any("bsky.app" in url for url in requested)
     agent.run.assert_not_called()
+
+
+def test_feature_bluesky_adds_watchlist_adapter(monkeypatch):
+    """With FEATURE_BLUESKY on, the defaults also poll getAuthorFeed."""
+
+    monkeypatch.setenv("NTFY_SERVER", "https://ntfy.sh")
+    monkeypatch.setenv("NTFY_TOPIC", "heimdall-demo-change-me")
+    monkeypatch.setenv("RSS_FEED_URL", "http://localhost:8001/feed.xml")
+    monkeypatch.setenv("FEATURE_BLUESKY", "true")
+    monkeypatch.setenv("BLUESKY_APPVIEW_URL", "https://public.api.bsky.app")
+    monkeypatch.setenv("BLUESKY_ACTORS", "demo.handle.test")
+    urls = []
+
+    def fake_get(url, timeout):
+        urls.append(url)
+        response = Mock()
+        if "feed.xml" in url:
+            response.text = "<rss><channel></channel></rss>"
+            response.json.side_effect = ValueError("not json")
+        elif "bsky.app" in url:
+            response.text = '{"feed":[]}'
+            response.json.return_value = {"feed": []}
+        else:
+            response.text = ""
+            response.json.side_effect = ValueError("not json")
+        response.raise_for_status.return_value = None
+        return response
+
+    monkeypatch.setattr("ntfy_adapter.requests.get", fake_get)
+    monkeypatch.setattr("rss_adapter.requests.get", fake_get)
+    monkeypatch.setattr("bluesky_adapter.requests.get", fake_get)
+    client = registered_client(
+        [
+            {"source_id": 4, "source_name": NtfyAdapter.SOURCE_NAME},
+            {"source_id": 5, "source_name": RssAdapter.SOURCE_NAME},
+            {"source_id": 6, "source_name": BlueskyAdapter.SOURCE_NAME},
+        ]
+    )
+    live = LiveOsintRunner(
+        client=client,
+        agent=Mock(),
+        poll_interval=5,
+        sleep=lambda _delay: None,
+        keyword_filter=KeywordFilter(["gun"]),
+    )
+
+    assert live.run(max_cycles=1) == 0
+    assert any("app.bsky.feed.getAuthorFeed" in url for url in urls)
+    assert any("actor=demo.handle.test" in url for url in urls)
+
+
+def test_bluesky_corroborates_with_other_source_not_itself(monkeypatch):
+    """One Bluesky source plus another source activates; two Bluesky posts do not."""
+
+    def bluesky_body(text, uri_suffix, indexed_at):
+        return {
+            "feed": [
+                {
+                    "post": {
+                        "uri": (
+                            "at://did:plc:watchlisttest/"
+                            f"app.bsky.feed.post/{uri_suffix}"
+                        ),
+                        "author": {
+                            "did": "did:plc:watchlisttest",
+                            "handle": "watchlist.test",
+                            "labels": [],
+                        },
+                        "record": {
+                            "$type": "app.bsky.feed.post",
+                            "text": text,
+                            "createdAt": indexed_at,
+                        },
+                        "indexedAt": indexed_at,
+                    }
+                }
+            ]
+        }
+
+    calls = {"n": 0}
+
+    def fake_get(url, timeout):
+        calls["n"] += 1
+        if calls["n"] == 1:
+            payload = bluesky_body(
+                "gun near the gate",
+                "b1",
+                "2026-10-08T18:00:00.000Z",
+            )
+        else:
+            payload = bluesky_body(
+                "gun near the gate again",
+                "b2",
+                "2026-10-08T18:00:10.000Z",
+            )
+        response = Mock()
+        response.json.return_value = payload
+        response.raise_for_status.return_value = None
+        return response
+
+    monkeypatch.setattr("bluesky_adapter.requests.get", fake_get)
+    bluesky = BlueskyAdapter(
+        appview="https://public.api.bsky.app",
+        actors=("watchlist.test", "other.test"),
+        clock=lambda: NOW + timedelta(minutes=1),
+    )
+    other = StaticAdapter(
+        "alpha-source",
+        [
+            [],
+            [
+                item(
+                    "alpha-source",
+                    "gun near the gate",
+                    "a1",
+                    NOW + timedelta(seconds=15),
+                )
+            ],
+        ],
+    )
+    client = registered_client(
+        [
+            {"source_id": 6, "source_name": BlueskyAdapter.SOURCE_NAME},
+            {"source_id": 1, "source_name": "alpha-source"},
+        ]
+    )
+    agent = ScriptedAgent()
+    live = runner_for(client, agent, [bluesky, other])
+
+    assert live.run(max_cycles=1) == 0
+    client.put_camera_state.assert_not_called()
+
+    assert live.run(max_cycles=1) == 0
+    client.put_camera_state.assert_called_once_with(
+        1,
+        {"mode": "Active", "fps": 5, "resolution": "720p"},
+    )
+    assert [source_id for _text, source_id in agent.calls] == [6, 6, 1]
 
 
 def test_client_patch_put_and_list_use_backend_routes():
