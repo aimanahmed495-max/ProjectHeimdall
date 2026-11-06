@@ -39,7 +39,12 @@ class KeywordFilter:
 
     @classmethod
     def from_env(cls) -> "KeywordFilter":
-        """Read ``OSINT_KEYWORDS``, falling back to :data:`DEFAULT_KEYWORDS`."""
+        """Read ``OSINT_KEYWORDS``, falling back to :data:`DEFAULT_KEYWORDS`.
+
+        Returns:
+            A filter built from the comma-separated env value, or the
+            default keyword list when the env value is empty.
+        """
 
         raw = os.getenv("OSINT_KEYWORDS", "")
         keywords = [part.strip() for part in raw.split(",") if part.strip()]
@@ -48,13 +53,27 @@ class KeywordFilter:
         return cls(keywords)
 
     def matches(self, text: str) -> bool:
-        """Return True when ``text`` contains any keyword, ignoring case."""
+        """Return True when ``text`` contains any keyword, ignoring case.
+
+        Args:
+            text: Report body to scan.
+
+        Returns:
+            ``True`` when at least one configured keyword is a substring.
+        """
 
         lowered = text.lower()
         return any(keyword in lowered for keyword in self._keywords)
 
     def keep(self, items: Iterable[SourceItem]) -> List[SourceItem]:
-        """Return matching items and log the ones that are dropped."""
+        """Return matching items and log the ones that are dropped.
+
+        Args:
+            items: Source items to filter before classification.
+
+        Returns:
+            Items whose text matched at least one keyword, in input order.
+        """
 
         kept: List[SourceItem] = []
         for item in items:

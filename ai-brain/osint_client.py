@@ -9,11 +9,17 @@ import requests
 
 
 class HeimdallAPIError(Exception):
-    """Raised when the Heimdall Core API returns an unexpected response."""
+    """Raised when the Heimdall Core API returns an unexpected response.
+
+    Used for unexpected status codes and malformed success payloads.
+    """
 
 
 class HeimdallAPIUnavailableError(HeimdallAPIError):
-    """Raised when the Heimdall Core API cannot be reached."""
+    """Raised when the Heimdall Core API cannot be reached.
+
+    Wraps connection and timeout failures from ``requests``.
+    """
 
 
 class HeimdallAPIClient:
@@ -38,6 +44,8 @@ class HeimdallAPIClient:
             base_url: API origin. When omitted, ``BASE_URL`` is read from
                 the environment, falling back to ``http://localhost:8000``.
             timeout: Per-request timeout in seconds.
+            username: Login name. Defaults to ``OSINT_API_USERNAME``.
+            password: Login password. Defaults to ``OSINT_API_PASSWORD``.
         """
 
         resolved = base_url or os.getenv("BASE_URL", "http://localhost:8000")
@@ -55,12 +63,23 @@ class HeimdallAPIClient:
 
     @property
     def base_url(self) -> str:
-        """Return the API origin this client is using."""
+        """Return the API origin this client is using.
+
+        Returns:
+            The resolved base URL without a trailing slash.
+        """
 
         return self._base_url
 
     def authenticate(self) -> None:
-        """Log in and attach a bearer token to future API requests."""
+        """Log in and attach a bearer token to future API requests.
+
+        Raises:
+            HeimdallAPIError: Credentials are missing, the login response
+                lacks an access token, or the API returns an unexpected
+                status.
+            HeimdallAPIUnavailableError: The API is not reachable.
+        """
 
         if not self._username or not self._password:
             raise HeimdallAPIError(
@@ -178,7 +197,16 @@ class HeimdallAPIClient:
         return response.json()
 
     def list_sources(self) -> List[Dict[str, Any]]:
-        """Return active OSINT sources from ``GET /sources``."""
+        """Return active OSINT sources from ``GET /sources``.
+
+        Returns:
+            Source records currently visible to the authenticated user.
+
+        Raises:
+            HeimdallAPIUnavailableError: The API is not reachable.
+            HeimdallAPIError: The API returned an unexpected status or a
+                non-list payload.
+        """
 
         response = self._request("GET", "/sources")
         self._ensure_success(response, expected_status=200)
@@ -204,6 +232,10 @@ class HeimdallAPIClient:
 
         Returns:
             The updated threat-event record.
+
+        Raises:
+            HeimdallAPIUnavailableError: The API is not reachable.
+            HeimdallAPIError: The API returned an unexpected status.
         """
 
         response = self._request(
@@ -231,6 +263,10 @@ class HeimdallAPIClient:
 
         Returns:
             The updated camera-state record.
+
+        Raises:
+            HeimdallAPIUnavailableError: The API is not reachable.
+            HeimdallAPIError: The API returned an unexpected status.
         """
 
         response = self._request(

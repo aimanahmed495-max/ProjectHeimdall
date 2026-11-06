@@ -50,14 +50,25 @@ class NtfyAdapter(SourceAdapter):
 
     @classmethod
     def from_env(cls) -> "NtfyAdapter":
-        """Build an adapter from ``NTFY_SERVER`` and ``NTFY_TOPIC``."""
+        """Build an adapter from ``NTFY_SERVER`` and ``NTFY_TOPIC``.
+
+        Returns:
+            An adapter pointed at the configured public topic.
+
+        Raises:
+            ValueError: ``NTFY_TOPIC`` is missing or blank.
+        """
 
         server = os.getenv("NTFY_SERVER", cls.DEFAULT_SERVER)
         topic = os.getenv("NTFY_TOPIC", "")
         return cls(server=server, topic=topic)
 
     def registration_payload(self) -> Dict[str, Any]:
-        """Return the ``POST /sources`` body for the ntfy tipline."""
+        """Return the ``POST /sources`` body for the ntfy tipline.
+
+        Returns:
+            An ``OsintSourceCreate`` dict for this topic URL.
+        """
 
         return {
             "source_name": self.SOURCE_NAME,
