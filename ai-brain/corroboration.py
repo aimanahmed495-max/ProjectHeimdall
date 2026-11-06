@@ -32,8 +32,9 @@ class CorroborationTracker:
 
     The category is the shared ``object_class`` (see
     :func:`object_classes.normalize_object_class`). Synonyms such as
-    ``man`` and ``woman`` count as the same class. Two reports that
-    share a source id never count as corroboration.
+    ``man`` and ``woman`` count as the same class. The class
+    ``unknown`` never corroborates, even from two sources. Two reports
+    that share a source id never count as corroboration.
     """
 
     def __init__(self, window_seconds: int = 300) -> None:
@@ -63,14 +64,14 @@ class CorroborationTracker:
             reported_at: When the source item was published.
 
         Returns:
-            The corroboration the first time two distinct sources agree,
-            otherwise ``None``.
+            The corroboration the first time two distinct sources agree on
+            a class other than ``unknown``, otherwise ``None``.
         """
 
         if not category.strip():
             return None
         key = normalize_object_class(category)
-        if key in self._fired:
+        if key == "unknown" or key in self._fired:
             return None
         moment = self._as_utc(reported_at)
         self._prune(key, moment)

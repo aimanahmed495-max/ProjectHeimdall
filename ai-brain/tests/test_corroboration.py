@@ -109,3 +109,21 @@ def test_vehicle_synonyms_corroborate():
 
     assert result is not None
     assert result.category == "vehicle"
+
+
+def test_two_unknown_reports_do_not_corroborate():
+    """Two sources both classified as unknown never activate."""
+
+    tracker = make_tracker()
+
+    assert tracker.observe(1, "unknown", 10, NOW) is None
+    assert tracker.observe(2, "unknown", 20, NOW + timedelta(seconds=5)) is None
+
+
+def test_different_unmapped_labels_do_not_corroborate():
+    """Unmapped labels collapse to unknown and still do not corroborate."""
+
+    tracker = make_tracker()
+
+    assert tracker.observe(1, "weapon", 10, NOW) is None
+    assert tracker.observe(2, "drone", 20, NOW + timedelta(seconds=5)) is None
