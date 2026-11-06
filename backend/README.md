@@ -113,9 +113,14 @@ JWT_SECRET_KEY=replace_with_generated_secret
 JWT_ALGORITHM=HS256
 JWT_ACCESS_TOKEN_MINUTES=30
 ENABLE_USER_REGISTRATION=true
+LOGIN_MAX_FAILURES=5
+LOGIN_IP_MAX_FAILURES=50
+LOGIN_FAILURE_WINDOW_SECONDS=900
 ```
 
 Set `ENABLE_USER_REGISTRATION=false` after the required accounts have been created to disable public registration.
+
+`LOGIN_MAX_FAILURES` is the sliding-window cap per (client IP, username). `LOGIN_IP_MAX_FAILURES` caps failures per IP across usernames. `LOGIN_FAILURE_WINDOW_SECONDS` is the window length. Set `LOGIN_MAX_FAILURES=0` to disable the limiter.
 
 Start PostgreSQL:
 
@@ -265,7 +270,7 @@ Passwords are stored only as Argon2 hashes. `deleted_at` supports soft deletion 
 | `POST` | `/system-logs` | Bearer token | Store a system log |
 | `GET` | `/system-logs` | Bearer token | Retrieve system logs |
 | `POST` | `/auth/register` | Public when enabled | Register a user with a hashed password |
-| `POST` | `/auth/login` | Public | Validate credentials and return a JWT |
+| `POST` | `/auth/login` | Public | Validate credentials and return a JWT. Returns 429 with `Retry-After` after too many failures |
 | `GET` | `/auth/me` | Bearer token | Retrieve the authenticated user |
 
 Protected requests must include an `Authorization: Bearer <access_token>` header. Missing, malformed, expired, or invalid tokens return HTTP 401.

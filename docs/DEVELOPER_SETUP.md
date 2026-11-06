@@ -235,6 +235,8 @@ That deletes local database data.
 
 **401 on every data route.** `GET /health` is the only public data-style route. Send `Authorization: Bearer` with a token from `POST /auth/login`. Expired tokens use the same 401 body as a wrong password.
 
+**429 on login.** `POST /auth/login` returns 429 with `Retry-After` after too many failed attempts for that (client IP, username), or after the per-IP spray cap. Wait out `LOGIN_FAILURE_WINDOW_SECONDS` (default 900), or restart the API process to clear the in-memory counters. Under Docker Desktop, host clients often share one NAT IP, so the per-IP cap is effectively global for local demos.
+
 **403 on `POST /auth/register`.** `ENABLE_USER_REGISTRATION` is off. The check is in `backend/app/auth.py`.
 
 **OSINT or vision says the API is unreachable.** `BASE_URL` should be `http://localhost:8000` when the client runs on the host. The Compose DNS name `postgres` is only valid inside the Docker network.
