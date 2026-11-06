@@ -3,7 +3,7 @@
 The OSINT module (`ai-brain/`) is a host program and an HTTP client of the backend API. It never imports `backend/` code or touches the database. The entrypoint is `ai-brain/main.py`, which runs one of two paths depending on `FEATURE_LIVE_OSINT` (`ai-brain/osint_settings.py`):
 
 - **Mock path** (flag off, the default): classify the alerts in `mock_alerts.json` once and exit. No corroboration, no camera change.
-- **Live path** (flag on): poll the ntfy and RSS adapters until interrupted, classify matching items, and set the camera Active when two distinct sources agree.
+- **Live path** (flag on): poll the ntfy and RSS adapters until interrupted, classify matching items, and set the camera Active when two distinct sources agree on the same shared object class (never `unknown`).
 
 `OsintIngestionApp` loads `ai-brain/.env` with `python-dotenv` before anything else. `load_dotenv` does not override variables already set in the process environment.
 
@@ -16,8 +16,8 @@ flowchart LR
     ntfy["ntfy topic<br/>NtfyAdapter"]
     rss["RSS feed<br/>RssAdapter"]
     filter["KeywordFilter<br/>OSINT_KEYWORDS"]
-    agent["OsintAgent<br/>LangGraph + Groq"]
-    tracker["CorroborationTracker<br/>window, 2 distinct sources"]
+    agent["OsintAgent<br/>LangGraph + Groq<br/>normalize_object_class"]
+    tracker["CorroborationTracker<br/>window, 2 distinct sources<br/>unknown never fires"]
     activator["CameraActivator"]
     api["Backend API"]
 
@@ -25,23 +25,50 @@ flowchart LR
     rss -->|"SourceItem"| filter
     filter -->|"matching text"| agent
     agent -->|"POST /threat-events (Pending)<br/>POST /system-logs"| api
-    agent -->|"object_class, event_id"| tracker
+    agent -->|"shared object_class, event_id"| tracker
     tracker -->|"Corroboration (first time only)"| activator
     activator -->|"PATCH /threat-events/{id}<br/>PUT /camera-states/{CAMERA_ID}<br/>POST /system-logs"| api
 ```
 
-1. **Startup** (`main.py`, `_run_live`). `HeimdallAPIClient.authenticate` posts `OSINT_API_USERNAME` and `OSINT_API_PASSWORD` to `POST /auth/login` and keeps the bearer token on its HTTP session (`ai-brain/osint_client.py`). `OsintAgent` is then built, which requires `GROQ_API_KEY`. `configure_logging` turns on INFO logging if nothing else has configured it.
-2. **Source registration** (`LiveOsintRunner.register_sources`, `ai-brain/live_osint.py`). The runner calls `GET /sources`, reuses the `source_id` of any adapter whose `source_name` is already stored, and calls `POST /sources` only for missing names. It prints the chosen id for each adapter.
+1. **Startup** (`main.py`, `_run_live`). `HeimdallAPIClient.authenticate` posts `OSINT_API_USERNAME` and `OSINT_API_PASSWORD` to `POST /auth/login` and keeps the bearer token on its HTTP session (`ai-brain/osint_client.py`). `OsintAgent` is then built, which requires `GROQ_API_KEY`. `configure_logging` (`ai-brain/osint_logging.py`) attaches a JSON-line handler to the root logger (stderr, INFO and above) when no handlers are already configured. The live runner is given `user_id` from `HeimdallAPIClient.current_user_id()` so later log events can carry it.
+2. **Source registration** (`LiveOsintRunner.register_sources`, `ai-brain/live_osint.py`). The runner calls `GET /sources`, reuses the `source_id` of any adapter whose `source_name` is already stored, and calls `POST /sources` only for missing names. It prints the chosen id for each adapter (banner output, not JSON).
 3. **Poll cycle** (`_run_cycle`). Every adapter is polled once, in order (ntfy first, then RSS). Then the runner sleeps `OSINT_POLL_SECONDS` and repeats.
 4. **Deduplication** (`SourceAdapter.poll`, `ai-brain/source_adapter.py`). Each adapter remembers the external ids it has already yielded and skips them. Items with an empty external id are dropped. This memory lasts only for the life of the process.
-5. **Keyword filter** (`KeywordFilter.keep`, `ai-brain/keyword_filter.py`). A case-insensitive substring match against `OSINT_KEYWORDS`. Items that do not match are logged at INFO (`Dropped OSINT item <id> from <source>: no keyword match.`) and never reach Groq.
-6. **Classification** (`OsintAgent.run`, `ai-brain/osint_agent.py`). A three-node LangGraph: `ingest_alert` trims the text, `classify_with_llm` asks Groq model `openai/gpt-oss-20b` (temperature 0) for `object_class` and `confidence_score` as structured output (with a plain-JSON fallback parser), and `post_to_api` creates a threat event (`source_id`, `object_class`, `confidence_score`, status `Pending`) and a system log with module `osint-agent`. `object_class` is trimmed and lowercased.
-7. **Corroboration** (`CorroborationTracker.observe`, `ai-brain/corroboration.py`). Only results with no error, a non-empty `object_class`, and a positive `threat_event.event_id` are observed. The tracker normalizes the class (synonyms map to a shared label; see `object_classes.normalize_object_class`), drops sightings older than `CORROBORATION_WINDOW_SECONDS` relative to the new report, and fires when two or more distinct `source_id`s remain for that class. The class `unknown` never corroborates. The same source reporting twice never counts. Timestamps come from the source item (ntfy `time`, RSS `pubDate`), not from when the item was processed. A class fires at most once per process unless an activation fails (see Failure behavior).
-8. **Activation** (`CameraActivator.activate`, `ai-brain/camera_activation.py`). In this order: `PATCH /threat-events/{event_id}` with status `Corroborated` and `corroborated_at` (UTC ISO-8601) for every event in the window, `PUT /camera-states/{CAMERA_ID}` with mode `Active`, fps `5`, resolution `720p`, then one `POST /system-logs` naming the class and source ids, attached to the first event. The camera row must already exist; the activator does not create it.
+5. **Keyword filter** (`KeywordFilter.keep`, `ai-brain/keyword_filter.py`). A case-insensitive substring match against `OSINT_KEYWORDS`. Items that do not match emit a JSON `keyword_drop` event at INFO and never reach Groq.
+6. **Classification** (`OsintAgent.run`, `ai-brain/osint_agent.py`). A three-node LangGraph: `ingest_alert` trims the text, `classify_with_llm` asks Groq model `openai/gpt-oss-20b` (temperature 0) for `object_class` and `confidence_score` as structured output (with a plain-JSON fallback parser), and `post_to_api` creates a threat event (`source_id`, `object_class`, `confidence_score`, status `Pending`) and a system log with module `osint-agent`. The prompt lists the five allowed classes. `ThreatClassification` runs every predicted label through `object_classes.normalize_object_class` before it is stored or returned. Each classified item emits a JSON `classify` event (WARNING when the result carries an error).
+7. **Corroboration** (`CorroborationTracker.observe`, `ai-brain/corroboration.py`). Only results with no error, a non-empty `object_class`, and a positive `threat_event.event_id` are observed. The tracker normalizes the class again (so synonyms such as `man` and `woman` share a key), drops sightings older than `CORROBORATION_WINDOW_SECONDS` relative to the new report, and fires when two or more distinct `source_id`s remain for that class. The class `unknown` never corroborates, even from two sources. The same source reporting twice never counts. Timestamps come from the source item (ntfy `time`, RSS `pubDate`), not from when the item was processed. A class fires at most once per process unless an activation fails (see Failure behavior).
+8. **Activation** (`CameraActivator.activate`, `ai-brain/camera_activation.py`). In this order: `PATCH /threat-events/{event_id}` with status `Corroborated` and `corroborated_at` (UTC ISO-8601) for every event in the window, `PUT /camera-states/{CAMERA_ID}` with mode `Active`, fps `5`, resolution `720p`, then one `POST /system-logs` naming the class and source ids, attached to the first event. On success the runner emits a JSON `corroborate` event. The camera row must already exist; the activator does not create it.
 
 ### Mock path
 
-`main.py` reads `mock_sources.json` and `mock_alerts.json`, authenticates, registers each mock source with `POST /sources` (a `409 Conflict` is treated as already registered and the existing record is looked up), maps each alert's `source_name` to its `source_id`, builds `OsintAgent`, runs every alert through it, and prints a per-alert summary. It does not poll, filter by keyword, corroborate, or touch any camera.
+`main.py` reads `mock_sources.json` and `mock_alerts.json`, authenticates, registers each mock source with `POST /sources` (a `409 Conflict` is treated as already registered and the existing record is looked up), maps each alert's `source_name` to its `source_id`, builds `OsintAgent`, runs every alert through it, and prints a per-alert summary. It does not poll, filter by keyword, corroborate, or touch any camera. Mock classifications still go through `normalize_object_class`.
+
+## Shared object classes
+
+`ai-brain/object_classes.py` is the single vocabulary for classification and corroboration. Allowed values:
+
+| Class | Example synonyms mapped onto it |
+|---|---|
+| `person` | man, woman, suspect, pedestrian, individual, human, intruder |
+| `vehicle` | car, truck, van, bus, motorcycle, bike, suv, taxi, sedan |
+| `crowd` | mob, group, gathering, people, protesters, riot |
+| `package` | parcel, box, bag, backpack, suitcase, luggage, bundle |
+| `unknown` | empty input, or any label not in the allowed set or synonym map |
+
+`normalize_object_class` strips and lowercases the raw string, keeps an already-allowed class, maps known synonyms, and otherwise returns `unknown`. The agent prompt asks the model for one of the five allowed classes; the validator and the tracker both normalize so a synonym from a test double or a loose model reply still lands on the shared key. Corroboration requires two distinct sources on the same shared class other than `unknown`.
+
+## Structured logging
+
+Pipeline events on the live path use `logging` through `ai-brain/osint_logging.py`. `configure_logging` writes one JSON object per line to stderr with at least `timestamp`, `level`, `request_id`, and `user_id`. Startup banners, source-id listings, mock-path summaries, and Ctrl+C stop text stay as plain `print` output.
+
+| Event | When | Typical level |
+|---|---|---|
+| `keyword_drop` | Item failed the keyword filter | INFO |
+| `classify` | Agent finished one live item | INFO, or WARNING when `error` is set |
+| `corroborate` | Activation succeeded for a class | INFO |
+| `error` | Controlled live-loop failure (poll, classify, or activation) | ERROR |
+
+Each poll batch and each classified item gets its own `request_id` (`new_request_id`). The runner binds `user_id` for the whole poll loop. Caplog coverage lives in `ai-brain/tests/test_osint_logging.py`.
 
 ## Source adapters
 
@@ -96,7 +123,7 @@ These are exactly the variables in `ai-brain/.env.example`, in the same order. "
 
 ## Failure behavior
 
-Errors are printed to stderr as `Error: ...` or `Error preparing OSINT ingestion: ...`. Keyword drops use `logging` at INFO. `HeimdallAPIUnavailableError` (connection failure or timeout) is a subclass of `HeimdallAPIError`, so every handler below that catches `HeimdallAPIError` also covers an unreachable API. HTTP requests to the API and to both sources use a 10 second timeout.
+Startup and mock-path failures still print plain `Error: ...` or `Error preparing OSINT ingestion: ...` to stderr. Inside the live loop, controlled failures emit JSON `error` events (`stage` is `poll`, `classify`, or `corroborate`) and the loop keeps running. Keyword drops use JSON `keyword_drop` events. `HeimdallAPIUnavailableError` (connection failure or timeout) is a subclass of `HeimdallAPIError`, so every handler below that catches `HeimdallAPIError` also covers an unreachable API. HTTP requests to the API and to both sources use a 10 second timeout.
 
 ### Startup (exit code 1, nothing is polled)
 
@@ -113,13 +140,14 @@ Errors are printed to stderr as `Error: ...` or `Error preparing OSINT ingestion
 
 | Condition | Behavior |
 |---|---|
-| An adapter request fails (`requests.RequestException`: connection error, timeout, or non-2xx status via `raise_for_status`) | Error printed, that adapter yields nothing this cycle, the other adapters still run, polling continues (`_new_items`). |
+| An adapter request fails (`requests.RequestException`: connection error, timeout, or non-2xx status via `raise_for_status`) | JSON `error` with `stage=poll`, that adapter yields nothing this cycle, the other adapters still run, polling continues (`_new_items`). |
 | ntfy returns lines that are not JSON or not message events | Those lines are skipped (`_accept_line`). |
-| RSS returns invalid XML or no `<channel>` | No items this cycle, nothing printed (`_parse_feed`). |
-| Groq call or output parsing fails | The result carries `Groq classification failed: ...`; nothing is posted and the item does not count toward corroboration. |
+| RSS returns invalid XML or no `<channel>` | No items this cycle, nothing logged (`_parse_feed`). |
+| Groq call or output parsing fails | The result carries `Groq classification failed: ...`; nothing is posted and the item does not count toward corroboration. A JSON `classify` event is still emitted at WARNING. |
 | `POST /threat-events` fails | The result carries the error; nothing counts toward corroboration. |
 | Threat event stored but `POST /system-logs` fails | The result keeps `threat_event` but also carries an error, so the runner skips corroboration for that event. |
-| Activation fails (`PATCH`, `PUT`, or the activation `POST /system-logs`) | Error printed and `CorroborationTracker.release` re-arms the class, so the next matching report can fire again. Calls that already succeeded are not rolled back. A missing camera row fails here with a 404 from the `PUT`. |
+| Two sources both classify as `unknown` (or any unmapped label that normalizes to `unknown`) | Both may post Pending threat events; the tracker never fires and the camera stays Dormant. |
+| Activation fails (`PATCH`, `PUT`, or the activation `POST /system-logs`) | JSON `error` with `stage=corroborate`, and `CorroborationTracker.release` re-arms the class so the next matching report can fire again. Calls that already succeeded are not rolled back. A missing camera row fails here with a 404 from the `PUT`. |
 | Ctrl+C after source registration | Prints `Stopped live OSINT polling.` and exits 0. |
 
 Only `requests.RequestException` is caught around an adapter poll and only `HeimdallAPIError` around the agent and the activator. Any other exception ends the process.
@@ -130,4 +158,4 @@ The mock path processes every alert even if some fail. It exits 1 if any alert f
 
 ### Test coverage
 
-The successful path is covered in `ai-brain/tests/`: corroboration rules (`test_corroboration.py`), keyword filtering, source registration, single-source no-op, and the activation order and payloads (`test_live_osint.py`), adapter parsing and dedup (`test_adapters.py`), and login and source mapping (`test_osint_integration.py`). These failure cases have no test yet: an adapter request error not stopping the other adapter, activation failure re-arming the class, and a system-log failure skipping corroboration. T03 in `docs/agent/TASKS.md` covers the first.
+Unit and integration coverage in `ai-brain/tests/`: shared class mapping and the unknown fallback (`test_object_classes.py`), corroboration rules including synonym agreement and unknown never firing (`test_corroboration.py`), JSON classify / corroborate / error fields (`test_osint_logging.py`), keyword filtering, source registration, single-source no-op, and activation order (`test_live_osint.py`), adapter parsing and dedup (`test_adapters.py`), and login and source mapping (`test_osint_integration.py`). End-to-end coverage in `tests/e2e_pipeline/`: matching sources activate the camera (T02); different classes, an expired window, an adapter request error, and the same source twice leave the camera Dormant (T03). These failure cases still have no dedicated unit test: activation failure re-arming the class, and a system-log failure skipping corroboration.
