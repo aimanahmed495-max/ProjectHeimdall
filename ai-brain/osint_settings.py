@@ -14,9 +14,27 @@ def live_osint_enabled() -> bool:
         ``True`` for ``1``, ``true``, ``yes``, or ``on`` (case-insensitive).
     """
 
-    raw = os.getenv("FEATURE_LIVE_OSINT", "false")
-    return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return _flag_enabled("FEATURE_LIVE_OSINT")
 
+
+def bluesky_enabled() -> bool:
+    """Return True when ``FEATURE_BLUESKY`` is turned on.
+
+    The default is off. The flag only matters when live OSINT is on;
+    ``LiveOsintRunner`` is the only caller.
+
+    Returns:
+        ``True`` for ``1``, ``true``, ``yes``, or ``on`` (case-insensitive).
+    """
+
+    return _flag_enabled("FEATURE_BLUESKY")
+
+
+def _flag_enabled(name: str) -> bool:
+    """Return True when an env flag is a recognized on-value."""
+
+    raw = os.getenv(name, "false")
+    return raw.strip().lower() in {"1", "true", "yes", "on"}
 
 def poll_seconds() -> float:
     """Return ``OSINT_POLL_SECONDS``, or 5 when the value is unusable.

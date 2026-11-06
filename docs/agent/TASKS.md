@@ -46,7 +46,7 @@ T14 demo reset and preflight script | deps: none | todo
   `scripts/demo_reset.sh`: check `/health`, log in with the OSINT credentials from the environment, set camera 1 to Dormant (read its current fps and resolution first), print the ntfy and RSS demo commands. Never print credentials.
   Accept: shellcheck-clean by inspection; documented in `ai-brain/README.md`.
 
-T15 Bluesky adapter | deps: T01 | todo
+T15 Bluesky adapter | deps: T01 | done
   Plan only first (new dependency and network behavior; verify the Bluesky API and auth requirements). Then a `SourceAdapter` behind `FEATURE_BLUESKY` (default off) with fixture tests, registered as a source, with `.env.example` and docs updated.
   Accept: plan in `docs/agent/plans/T15.md`; build only after Aiman approves it.
 

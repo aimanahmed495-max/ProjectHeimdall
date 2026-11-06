@@ -1,0 +1,154 @@
+{
+  "feed": [
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/normal1",
+        "cid": "bafynormal1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "  Gun reported near the campus gate  ",
+          "createdAt": "2099-01-01T00:00:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:55:00.000Z"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:someoneelse/app.bsky.feed.post/repost1",
+        "cid": "bafyrepost1",
+        "author": {
+          "did": "did:plc:someoneelse",
+          "handle": "other.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Reposted gun tip that should be skipped",
+          "createdAt": "2026-10-08T17:50:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:56:00.000Z"
+      },
+      "reason": {
+        "$type": "app.bsky.feed.defs#reasonRepost",
+        "by": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test"
+        }
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/pin1",
+        "cid": "bafypin1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Pinned gun tip that should be skipped",
+          "createdAt": "2026-10-08T17:40:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:57:00.000Z"
+      },
+      "reason": {
+        "$type": "app.bsky.feed.defs#reasonPin"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/nonpost1",
+        "cid": "bafynonpost1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.generator",
+          "text": "Not a post record",
+          "createdAt": "2026-10-08T17:54:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:54:00.000Z"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/empty1",
+        "cid": "bafyempty1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "   ",
+          "createdAt": "2026-10-08T17:53:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:53:00.000Z"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:privateacct/app.bsky.feed.post/private1",
+        "cid": "bafyprivate1",
+        "author": {
+          "did": "did:plc:privateacct",
+          "handle": "private.test",
+          "labels": [
+            {
+              "val": "!no-unauthenticated"
+            }
+          ]
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Gun tip from a no-unauthenticated author",
+          "createdAt": "2026-10-08T17:52:00.000Z"
+        },
+        "indexedAt": "2026-10-08T17:52:00.000Z"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/old1",
+        "cid": "bafyold1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Old gun tip outside the startup window",
+          "createdAt": "2026-10-08T16:00:00.000Z"
+        },
+        "indexedAt": "2026-10-08T16:00:00.000Z"
+      }
+    },
+    {
+      "post": {
+        "uri": "at://did:plc:watchlisttest/app.bsky.feed.post/normal1",
+        "cid": "bafydup1",
+        "author": {
+          "did": "did:plc:watchlisttest",
+          "handle": "watchlist.test",
+          "labels": []
+        },
+        "record": {
+          "$type": "app.bsky.feed.post",
+          "text": "Duplicate uri of the normal post",
+          "createdAt": "2026-10-08T17:55:30.000Z"
+        },
+        "indexedAt": "2026-10-08T17:55:30.000Z"
+      }
+    }
+  ]
+}
