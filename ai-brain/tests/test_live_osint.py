@@ -51,7 +51,7 @@ class ScriptedAgent:
     def run(self, alert_text, source_id):
         self.calls.append((alert_text, source_id))
         return {
-            "object_class": "weapon",
+            "object_class": "person",
             "threat_event": {"event_id": next(self._ids)},
             "error": None,
         }
@@ -256,7 +256,7 @@ def test_activation_patches_then_puts_once():
     assert log_entry["event_id"] == 11
     assert log_entry["module"] == "osint-agent"
     assert "Active" in log_entry["message"]
-    assert "unknown" in log_entry["message"]
+    assert "person" in log_entry["message"]
     activation = [
         name
         for name, _args, _kwargs in client.method_calls
