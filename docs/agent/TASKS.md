@@ -18,7 +18,7 @@ T04 CI step for the pipeline E2E | deps: T02 | todo
   Plan only (touches `.github/workflows/ci.yml`). An `e2e` job already exists (Docker Compose + Playwright). Prefer adding a step to it over a new job; otherwise a job with a Postgres service that runs `pytest -m e2e`.
   Accept: plan in `docs/agent/plans/T04.md` with the exact YAML and why it is safe.
 
-T06 OSINT structured logging | deps: none | todo
+T06 OSINT structured logging | deps: none | done
   Replace ad hoc prints for pipeline events in `ai-brain/` with `logging` that emits JSON lines with timestamp, level, request_id and user_id. Keep the existing console banner output unchanged.
   Accept: caplog tests assert each field is present on classify, corroborate, and error events; existing tests still pass.
 
@@ -26,7 +26,7 @@ T08 OWASP audit refresh | deps: T01 | done
   Docs only. Update A04, A10, A07, A09 and the Summary rows in `docs/OWASP_AUDIT.md` for the live OSINT path: corroboration now gates camera activation, and the OSINT module fetches the configured ntfy server and RSS feed URL. Every claim cites the file it came from.
   Accept: no sentence contradicts the current code; Open items updated.
 
-T09 OSINT pipeline doc | deps: none | todo
+T09 OSINT pipeline doc | deps: none | done
   Docs only. `docs/OSINT_PIPELINE.md`: data flow, source adapters, env variable table, failure behavior.
   Accept: the env table matches `ai-brain/.env.example` exactly; no variable invented.
 
