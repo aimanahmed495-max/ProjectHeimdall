@@ -185,7 +185,7 @@ jobs:
       - name: Install Playwright Chromium
         working-directory: tests/e2e
         timeout-minutes: 8
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install chromium
 
       - name: Start Heimdall services
         run: docker compose up -d --build
