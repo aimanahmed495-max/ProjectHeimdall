@@ -22,7 +22,7 @@ flowchart LR
 
     osint -->|"POST /auth/login, /sources,<br/>/threat-events, /system-logs"| api
     osint -->|"alert text"| groq
-    vision -->|"POST /auth/login, /camera-states,<br/>/threat-events, /system-logs"| api
+    vision -->|"POST /auth/login<br/>GET /camera-states/{id}<br/>POST /threat-events, /system-logs"| api
     browser --> console
     browser -->|"Bearer HTTP<br/>auth and five collections"| api
     api -->|"SQLAlchemy"| db
@@ -30,7 +30,7 @@ flowchart LR
 
 The OSINT entrypoint is `ai-brain/main.py`. It reads `mock_sources.json` and `mock_alerts.json`, logs in with `OSINT_API_USERNAME` and `OSINT_API_PASSWORD`, and registers sources through `ai-brain/osint_client.py`. `ai-brain/osint_agent.py` compiles a three-node LangGraph: normalize the alert, classify it with Groq (`openai/gpt-oss-20b`) into `object_class` and `confidence_score`, then `POST /threat-events` with `source_id` and `POST /system-logs`. The stored source URL is not requested.
 
-The vision entrypoint is `vision/main.py`. `vision/detector.py` loads YOLOv8n and yields detections at or above 0.5 confidence from images in `vision/test_media/`. `vision/vision_client.py` logs in with `VISION_API_USERNAME` and `VISION_API_PASSWORD`, creates or updates camera `1` (`Active` while running, `Dormant` afterward), and posts each detection as a threat event with `camera_id` and no `source_id`, plus a system log.
+The vision entrypoint is `vision/main.py`. It wires `VisionRunner` (`vision/vision_runner.py`), which polls `GET /camera-states/{VISION_CAMERA_ID}` and captures only while the mode is `Active`. `vision/frame_sources.py` opens a webcam index, video file, or image directory from `VISION_FRAME_SOURCE` (or a Pi placeholder when `FEATURE_PI_CAMERA` is on). `vision/detector.py` loads YOLOv8n and yields detections at or above 0.5 confidence. `vision/vision_client.py` logs in with `VISION_API_USERNAME` and `VISION_API_PASSWORD`, reads camera state (never writes it), and posts each throttled detection as a threat event with `camera_id` and no `source_id`, plus a system log.
 
 `frontend/app.py` serves `frontend/heimdall_console.html` through Streamlit on port 8501. The page logs in and registers against `/auth/*`, then polls the five collection routes every five seconds with the bearer token. Compose sets `HEIMDALL_API_URL` to `http://localhost:8000` because `fetch` runs in the browser on the host, not inside the frontend container.
 

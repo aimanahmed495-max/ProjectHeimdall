@@ -22,7 +22,8 @@ class HeimdallVisionClient:
     The client reads ``BASE_URL`` from the environment and defaults to
     ``http://localhost:8000``. Connection failures are converted into
     :class:`HeimdallAPIUnavailableError` so callers can fail gracefully
-    when the backend is not running.
+    when the backend is not running. Camera state is read-only: this
+    client never posts or puts ``/camera-states``.
     """
 
     def __init__(
@@ -38,6 +39,8 @@ class HeimdallVisionClient:
             base_url: API origin. When omitted, ``BASE_URL`` is read from
                 the environment, falling back to ``http://localhost:8000``.
             timeout: Per-request timeout in seconds.
+            username: Login name. Defaults to ``VISION_API_USERNAME``.
+            password: Login password. Defaults to ``VISION_API_PASSWORD``.
         """
 
         resolved = base_url or os.getenv("BASE_URL", "http://localhost:8000")
@@ -68,7 +71,7 @@ class HeimdallVisionClient:
                 "VISION_API_USERNAME and VISION_API_PASSWORD."
             )
 
-        response = self._request(
+        response = self._send(
             "POST",
             "/auth/login",
             json_body={
@@ -86,62 +89,25 @@ class HeimdallVisionClient:
 
         self._session.headers.update({"Authorization": f"Bearer {token}"})
 
-    def post_camera_state(self, state: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a camera-state record with ``POST /camera-states``.
+    def get_camera_state(self, camera_id: int) -> Optional[Dict[str, Any]]:
+        """Fetch one camera-state row, or None when it does not exist.
 
         Args:
-            state: Payload matching ``CameraStateCreate``
-                (``camera_id``, ``mode``, ``fps``, ``resolution``).
-                ``mode`` must be ``Dormant`` or ``Active``.
+            camera_id: Heimdall ``camera_states.camera_id``.
 
         Returns:
-            The created camera-state record from the API.
+            The camera-state JSON object, or ``None`` on HTTP 404.
 
         Raises:
             HeimdallAPIUnavailableError: The API is not reachable.
             HeimdallAPIError: The API returned an unexpected status.
         """
 
-        response = self._request("POST", "/camera-states", json_body=state)
-        self._ensure_success(response, expected_status=201)
+        response = self._request("GET", f"/camera-states/{camera_id}")
+        if response.status_code == 404:
+            return None
+        self._ensure_success(response, expected_status=200)
         return response.json()
-
-    def set_camera_state(
-        self,
-        state: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Register a camera or update its existing state."""
-
-        camera_id = state["camera_id"]
-        path = f"/camera-states/{camera_id}"
-
-        lookup_response = self._request("GET", path)
-
-        if lookup_response.status_code == 404:
-            return self.post_camera_state(state)
-
-        self._ensure_success(
-            lookup_response,
-            expected_status=200,
-        )
-
-        update_payload = {
-            "mode": state["mode"],
-            "fps": state["fps"],
-            "resolution": state["resolution"],
-        }
-
-        update_response = self._request(
-            "PUT",
-            path,
-            json_body=update_payload,
-        )
-        self._ensure_success(
-            update_response,
-            expected_status=200,
-        )
-
-        return update_response.json()
 
     def post_threat_event(self, event: Dict[str, Any]) -> Dict[str, Any]:
         """Create a threat event with ``POST /threat-events``.
@@ -183,6 +149,20 @@ class HeimdallVisionClient:
         return response.json()
 
     def _request(
+        self,
+        method: str,
+        path: str,
+        json_body: Optional[Dict[str, Any]] = None,
+    ) -> requests.Response:
+        """Send a request and re-authenticate once on HTTP 401."""
+
+        response = self._send(method, path, json_body=json_body)
+        if response.status_code != 401:
+            return response
+        self.authenticate()
+        return self._send(method, path, json_body=json_body)
+
+    def _send(
         self,
         method: str,
         path: str,

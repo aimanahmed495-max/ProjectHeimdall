@@ -25,6 +25,7 @@ run "$O/complexipy" vision --max-complexity-allowed 15
 run bash -c "cd backend && '$B/alembic' upgrade head"
 run env PYTHONPATH=. "$B/pytest" backend/tests -q -x
 run "$O/pytest" ai-brain/tests -q -x
+run "$O/pytest" vision/tests -q -x
 run "$F/pytest" tests/ -q -x
 
 [ "$fail" -eq 0 ] && echo "OK"

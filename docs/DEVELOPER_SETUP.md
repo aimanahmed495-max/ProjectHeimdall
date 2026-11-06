@@ -147,14 +147,13 @@ python -m pip install -r ai-brain/requirements.txt
 pytest ai-brain/tests -q
 ```
 
-Vision tests: there is no `vision/tests` directory. CI prints a notice and skips pytest. After that directory exists:
+Vision unit tests use fakes only (no camera, YOLO weights, or network). The OSINT venv is enough because OpenCV and Ultralytics are imported lazily:
 
 ```bash
-python -m pip install -r vision/requirements.txt
 pytest vision/tests -q
 ```
 
-`backend/tests/test_vision_client.py` mocks the vision HTTP client and runs with the backend suite. It does not load YOLOv8.
+`scripts/check` runs that suite. CI runs it in the vision job once `vision/tests` exists. `backend/tests/test_vision_client.py` mocks the vision HTTP client and runs with the backend suite.
 
 Console tests:
 
@@ -217,7 +216,7 @@ cd vision
 python main.py
 ```
 
-Vision exits 0 with a message if `vision/test_media/` has no images. Supported suffixes are `.jpg`, `.jpeg`, `.png`, `.bmp`, `.webp`, `.tif`, and `.tiff`.
+Vision is long-running. It polls camera state and captures only while the row is `Active`. Set `VISION_FRAME_SOURCE` to a webcam index (`0`), a video file, or an image directory. Leave `FEATURE_PI_CAMERA` off unless you are exercising the T18 placeholder (it refuses to open).
 
 ## 10. Troubleshooting
 
