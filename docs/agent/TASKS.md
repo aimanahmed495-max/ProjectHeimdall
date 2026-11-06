@@ -22,7 +22,7 @@ T06 OSINT structured logging | deps: none | done
   Replace ad hoc prints for pipeline events in `ai-brain/` with `logging` that emits JSON lines with timestamp, level, request_id and user_id. Keep the existing console banner output unchanged.
   Accept: caplog tests assert each field is present on classify, corroborate, and error events; existing tests still pass.
 
-T08 OWASP audit refresh | deps: T01 | todo
+T08 OWASP audit refresh | deps: T01 | done
   Docs only. Update A04, A10, A07, A09 and the Summary rows in `docs/OWASP_AUDIT.md` for the live OSINT path: corroboration now gates camera activation, and the OSINT module fetches the configured ntfy server and RSS feed URL. Every claim cites the file it came from.
   Accept: no sentence contradicts the current code; Open items updated.
 
