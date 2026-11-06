@@ -5,128 +5,92 @@ import pytest
 from vision.vision_client import HeimdallAPIError, HeimdallVisionClient
 
 
-def make_response(status_code, payload):
+def make_response(status_code, payload, method="GET", url="http://localhost:8000/x"):
     response = Mock()
     response.status_code = status_code
     response.json.return_value = payload
     response.text = str(payload)
-    response.request.method = "GET"
-    response.url = "http://localhost:8000/camera-states/1"
+    response.request.method = method
+    response.url = url
     return response
 
 
-def test_set_camera_state_registers_missing_camera():
+def test_get_camera_state_returns_payload_on_200():
     client = HeimdallVisionClient()
-
-    lookup_response = make_response(
-        404,
-        {"detail": "Camera state not found."},
-    )
-    created_camera = {
+    payload = {
         "state_id": 1,
         "camera_id": 1,
         "mode": "Active",
         "fps": 5,
         "resolution": "720p",
-        "timestamp": "2026-09-21T20:00:00Z",
     }
-    state = {
-        "camera_id": 1,
-        "mode": "Active",
-        "fps": 5,
-        "resolution": "720p",
-    }
+    client._send = Mock(return_value=make_response(200, payload))
 
-    client._request = Mock(return_value=lookup_response)
-    client.post_camera_state = Mock(return_value=created_camera)
+    result = client.get_camera_state(1)
 
-    result = client.set_camera_state(state)
-
-    assert result == created_camera
-    client._request.assert_called_once_with(
-        "GET",
-        "/camera-states/1",
-    )
-    client.post_camera_state.assert_called_once_with(state)
+    assert result == payload
+    client._send.assert_called_once_with("GET", "/camera-states/1", json_body=None)
 
 
-def test_set_camera_state_updates_existing_camera():
+def test_get_camera_state_returns_none_on_404():
     client = HeimdallVisionClient()
+    client._send = Mock(
+        return_value=make_response(404, {"detail": "Camera state not found."})
+    )
 
-    lookup_response = make_response(
+    assert client.get_camera_state(99) is None
+
+
+def test_get_camera_state_rejects_unexpected_status():
+    client = HeimdallVisionClient()
+    client._send = Mock(
+        return_value=make_response(500, {"detail": "Internal server error."})
+    )
+
+    with pytest.raises(HeimdallAPIError, match="500"):
+        client.get_camera_state(1)
+
+
+def test_request_reauthenticates_once_on_401():
+    client = HeimdallVisionClient(
+        username="vision.operator",
+        password="SecureVisionPassword123!",
+    )
+    unauthorized = make_response(401, {"detail": "expired"})
+    ok = make_response(
         200,
         {
             "state_id": 1,
             "camera_id": 1,
-            "mode": "Active",
+            "mode": "Dormant",
             "fps": 5,
             "resolution": "720p",
         },
     )
-    updated_camera = {
-        "state_id": 1,
-        "camera_id": 1,
-        "mode": "Dormant",
-        "fps": 5,
-        "resolution": "720p",
-        "timestamp": "2026-09-21T20:05:00Z",
-    }
-    update_response = make_response(200, updated_camera)
-    state = {
-        "camera_id": 1,
-        "mode": "Dormant",
-        "fps": 5,
-        "resolution": "720p",
-    }
-
-    client._request = Mock(
-        side_effect=[
-            lookup_response,
-            update_response,
-        ]
+    login = make_response(
+        200,
+        {"access_token": "fresh-token", "token_type": "bearer"},
+        method="POST",
+        url="http://localhost:8000/auth/login",
     )
+    client._send = Mock(side_effect=[unauthorized, login, ok])
 
-    result = client.set_camera_state(state)
+    result = client.get_camera_state(1)
 
-    assert result == updated_camera
-    assert client._request.call_args_list == [
+    assert result["mode"] == "Dormant"
+    assert client._session.headers["Authorization"] == "Bearer fresh-token"
+    assert client._send.call_args_list == [
+        call("GET", "/camera-states/1", json_body=None),
         call(
-            "GET",
-            "/camera-states/1",
-        ),
-        call(
-            "PUT",
-            "/camera-states/1",
+            "POST",
+            "/auth/login",
             json_body={
-                "mode": "Dormant",
-                "fps": 5,
-                "resolution": "720p",
+                "username": "vision.operator",
+                "password": "SecureVisionPassword123!",
             },
         ),
+        call("GET", "/camera-states/1", json_body=None),
     ]
-
-
-def test_set_camera_state_rejects_unexpected_lookup_error():
-    client = HeimdallVisionClient()
-
-    lookup_response = make_response(
-        500,
-        {"detail": "Internal server error."},
-    )
-    client._request = Mock(return_value=lookup_response)
-
-    with pytest.raises(
-        HeimdallAPIError,
-        match="500",
-    ):
-        client.set_camera_state(
-            {
-                "camera_id": 1,
-                "mode": "Active",
-                "fps": 5,
-                "resolution": "720p",
-            }
-        )
 
 
 def test_authenticate_adds_bearer_token():
@@ -141,11 +105,11 @@ def test_authenticate_adds_bearer_token():
             "token_type": "bearer",
         },
     )
-    client._request = Mock(return_value=response)
+    client._send = Mock(return_value=response)
 
     client.authenticate()
 
-    client._request.assert_called_once_with(
+    client._send.assert_called_once_with(
         "POST",
         "/auth/login",
         json_body={
@@ -178,7 +142,7 @@ def test_authenticate_requires_access_token():
         200,
         {"token_type": "bearer"},
     )
-    client._request = Mock(return_value=response)
+    client._send = Mock(return_value=response)
 
     with pytest.raises(
         HeimdallAPIError,
