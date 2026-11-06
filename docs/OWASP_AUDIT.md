@@ -77,7 +77,9 @@ Queries in `backend/app/main.py` and `backend/app/auth.py` use the SQLAlchemy OR
 
 **What the code does.** The implemented design is a FastAPI service in front of PostgreSQL, with OSINT and vision as separate HTTP clients and a browser console that polls the API. Threat events must name an OSINT source, a camera, or both (`ck_threat_events_has_origin` in `backend/app/models.py`). Soft-deleted sources, events, and alerts are hidden from normal reads and cannot be referenced by new rows (`backend/app/main.py`). Duplicate usernames, source names, and camera ids return HTTP 409.
 
-The same design gives every registered user full read and write access, leaves registration on by default, and has no abuse throttling (see A07). `FEATURE_LIVE_OSINT` defaults to off in `ai-brain/osint_settings.py` (`live_osint_enabled`). When it is off, `ai-brain/main.py` classifies local mock JSON only; that path does not call the vision module and does not change camera mode. When the flag is on, `LiveOsintRunner` in `ai-brain/live_osint.py` polls the configured ntfy and RSS adapters, classifies matching items, and feeds them to `CorroborationTracker` in `ai-brain/corroboration.py`. Camera activation runs only after that tracker returns a corroboration: two distinct `source_id` values with the same normalized object class inside `CORROBORATION_WINDOW_SECONDS` (default 300). The same source twice never corroborates, and class `unknown` never corroborates even from two sources. On a hit, `CameraActivator` in `ai-brain/camera_activation.py` PATCHes the events to `Corroborated`, PUTs `CAMERA_ID` (default 1) to `Active`, and posts a system log. The camera row must already exist. `vision/main.py` still processes still images for camera id 1 and does not depend on OSINT for its current capture loop.
+The same design gives every registered user full read and write access, leaves registration on by default, and has no abuse throttling (see A07). `FEATURE_LIVE_OSINT` defaults to off in `ai-brain/osint_settings.py` (`live_osint_enabled`). When it is off, `ai-brain/main.py` classifies local mock JSON only; that path does not call the vision module and does not change camera mode. When the flag is on, `LiveOsintRunner` in `ai-brain/live_osint.py` polls the configured ntfy and RSS adapters (and `BlueskyAdapter` when `FEATURE_BLUESKY` is on), classifies matching items, and feeds them to `CorroborationTracker` in `ai-brain/corroboration.py`. Camera activation runs only after that tracker returns a corroboration: two distinct `source_id` values with the same normalized object class inside `CORROBORATION_WINDOW_SECONDS` (default 300). The same source twice never corroborates, and class `unknown` never corroborates even from two sources. On a hit, `CameraActivator` in `ai-brain/camera_activation.py` PATCHes the events to `Corroborated`, PUTs `CAMERA_ID` (default 1) to `Active`, and posts a system log. The camera row must already exist. `vision/main.py` still processes still images for camera id 1 and does not depend on OSINT for its current capture loop.
+
+`BlueskyAdapter` (`ai-brain/bluesky_adapter.py`) timestamps items from AppView `indexedAt`, not client-set `record.createdAt`, so a backdated or future-dated post cannot pull itself into or out of the corroboration window by spoofing `createdAt`. Every watched Bluesky account shares one registered source (`bluesky-watchlist`), so two Bluesky accounts never corroborate each other and cannot activate a camera alone.
 
 **Status: Partial.**
 
@@ -162,7 +164,7 @@ TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets.
 
 `ai-brain/osint_client.py` uses `requests` against `BASE_URL` (default `http://localhost:8000`) with a 10-second timeout. Paths are fixed: `/auth/login`, `/auth/me`, `/sources`, `/threat-events`, `/system-logs`, and (via `CameraActivator`) `/camera-states` plus threat-event PATCH. `ai-brain/osint_agent.py` sends alert text to Groq through `ChatGroq` (`model` `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set. When `FEATURE_LIVE_OSINT` is off, mock alerts are read from local JSON files in `ai-brain/main.py`, not from any feed URL.
 
-When `FEATURE_LIVE_OSINT` is on, `LiveOsintRunner._select_adapters` in `ai-brain/live_osint.py` builds `NtfyAdapter.from_env()` and `RssAdapter.from_env()`. `NtfyAdapter` (`ai-brain/ntfy_adapter.py`) GETs `{NTFY_SERVER}/{NTFY_TOPIC}/json?poll=1&since=...` (default server `https://ntfy.sh`, topic required). `RssAdapter` (`ai-brain/rss_adapter.py`) GETs `RSS_FEED_URL` (default `http://localhost:8001/feed.xml`). Both use a 10-second timeout. Those targets come from environment variables listed in `ai-brain/.env.example`. There is no URL scheme check, private-network block, or destination allowlist in the adapters or in `backend/app/schemas.py` (`url` is only `min_length=1`).
+When `FEATURE_LIVE_OSINT` is on, `LiveOsintRunner._select_adapters` in `ai-brain/live_osint.py` builds `NtfyAdapter.from_env()` and `RssAdapter.from_env()`, and appends `BlueskyAdapter.from_env()` when `FEATURE_BLUESKY` is on (`bluesky_enabled` in `ai-brain/osint_settings.py`). `NtfyAdapter` (`ai-brain/ntfy_adapter.py`) GETs `{NTFY_SERVER}/{NTFY_TOPIC}/json?poll=1&since=...` (default server `https://ntfy.sh`, topic required). `RssAdapter` (`ai-brain/rss_adapter.py`) GETs `RSS_FEED_URL` (default `http://localhost:8001/feed.xml`). `BlueskyAdapter` (`ai-brain/bluesky_adapter.py`) GETs `{BLUESKY_APPVIEW_URL}/xrpc/app.bsky.feed.getAuthorFeed` for each actor in `BLUESKY_ACTORS` (path fixed; host from the operator-set env var, never from `osint_sources.url`), with `limit=25`, `filter=posts_no_replies`, no auth header, and no credentials. All three adapters use a 10-second timeout. Those targets come from environment variables listed in `ai-brain/.env.example`. There is no URL scheme check, private-network block, or destination allowlist in the adapters or in `backend/app/schemas.py` (`url` is only `min_length=1`).
 
 `vision/vision_client.py` calls the same style of fixed paths on `BASE_URL`, plus `/camera-states`. `vision/detector.py` can download `yolov8n.pt` through Ultralytics. The browser map in `frontend/heimdall_console.html` loads OpenStreetMap tiles in the client, not on the API server.
 
@@ -170,7 +172,7 @@ When `FEATURE_LIVE_OSINT` is on, `LiveOsintRunner._select_adapters` in `ai-brain
 
 **Status: Partial.**
 
-**Remaining gap.** Live OSINT already performs server-side GETs to operator-configured ntfy and RSS URLs with no allowlist. The API still does not fetch stored `osint_sources.url` values. Anyone who can set the OSINT process environment (or who later switches adapters to the stored column) controls those destinations.
+**Remaining gap.** Live OSINT already performs server-side GETs to operator-configured ntfy, RSS, and (when enabled) Bluesky AppView URLs with no allowlist. The API still does not fetch stored `osint_sources.url` values. Anyone who can set the OSINT process environment (or who later switches adapters to the stored column) controls those destinations.
 
 ## Data privacy
 
@@ -197,10 +199,12 @@ The column was added for the domain tables in Alembic revision `0dafecf04f65`, a
 | `users.password_hash` | Argon2 hash, not the password |
 | `osint_sources` | Source name, type, and URL |
 | `alert_logs.message` | Free-text alert text |
-| `system_logs.message` | Free-text module messages. The OSINT agent copies the raw alert into this message (`ai-brain/osint_agent.py`) |
+| `system_logs.message` | Free-text module messages. The OSINT agent copies the raw alert into this message (`ai-brain/osint_agent.py`), including Bluesky post text when that adapter is enabled |
 | `threat_events` | Object class, confidence, status, optional source and camera ids. No image bytes |
 
 The schema has no email, phone, or street-address columns. Vision posts class names and scores, not frames (`vision/main.py`). The database volume is the Docker volume `postgres_data`.
+
+**Bluesky deletion gap.** Bluesky Developer Guideline 3 asks services to delete content a user has requested deleted. Heimdall does not re-check Bluesky for deleted posts after ingest, and `system_logs` has no soft-delete or delete path (`backend/app/models.py`). Post text that reached `system_logs.message` therefore remains. This is an accepted course open item; the build does not strip Bluesky post text from log messages.
 
 ## Summary
 
@@ -209,13 +213,13 @@ The schema has no email, phone, or street-address columns. Vision posts class na
 | A01 Broken Access Control | Yes | Partial | No roles or object ownership. Registration defaults to on. |
 | A02 Cryptographic Failures | Yes | Partial | Argon2 and signed, expiring JWTs are in place. Transport is HTTP. Tokens are not revocable. |
 | A03 Injection | Yes | Implemented | ORM and Pydantic validation. `url` is only a non-empty string. |
-| A04 Insecure Design | Yes | Partial | Single privilege level for every account. Live corroboration gates camera Active; any auth user can still PUT camera state. |
+| A04 Insecure Design | Yes | Partial | Single privilege level for every account. Live corroboration gates camera Active (Bluesky uses `indexedAt` and one source id for all watched accounts); any auth user can still PUT camera state. |
 | A05 Security Misconfiguration | Yes | Partial | Docs, root containers, and published Postgres. Secrets come from the environment. |
 | A06 Vulnerable and Outdated Components | Yes | Partial | Accepted `pip-audit` ignores. Unpinned OSINT deps. Frontend job has no `pip-audit`. |
 | A07 Identification and Authentication Failures | Yes | Partial | Hashed passwords and bearer JWTs. Mock and live OSINT share `/auth/login`. No rate limit or lockout. |
 | A08 Software and Data Integrity Failures | Yes | Partial | CI, Alembic, Dependabot, TruffleHog. Unpinned OSINT deps and unsigned YOLO weights. |
 | A09 Security Logging and Monitoring Failures | Yes | Partial | No auth audit log. Live OSINT JSON stderr logs exist. `system_logs` is client-written. |
-| A10 Server-Side Request Forgery | Yes | Partial | API does not fetch stored URLs. Live OSINT GETs env-configured ntfy and RSS with no allowlist. |
+| A10 Server-Side Request Forgery | Yes | Partial | API does not fetch stored URLs. Live OSINT GETs env-configured ntfy, RSS, and optional Bluesky AppView with no allowlist. |
 
 ## Open items
 
@@ -228,4 +232,5 @@ The schema has no email, phone, or street-address columns. Vision posts class na
 7. Pin `ai-brain/requirements.txt` and run `pip-audit` on `frontend/requirements.txt` in CI.
 8. Record authentication failures and administrative changes in a log the client cannot forge. Live OSINT JSON lines on stderr and client-written `system_logs` rows are not that log.
 9. Decide whether `/docs`, `/redoc`, and `/openapi.json` stay public.
-10. Allowlist or otherwise constrain live OSINT outbound GETs to `NTFY_SERVER`/`NTFY_TOPIC` and `RSS_FEED_URL` (`ai-brain/ntfy_adapter.py`, `ai-brain/rss_adapter.py`). The API still does not fetch the stored `osint_sources.url` column; if adapters ever switch to that column, validate it the same way before the first request.
+10. Allowlist or otherwise constrain live OSINT outbound GETs to `NTFY_SERVER`/`NTFY_TOPIC`, `RSS_FEED_URL`, and `BLUESKY_APPVIEW_URL` (`ai-brain/ntfy_adapter.py`, `ai-brain/rss_adapter.py`, `ai-brain/bluesky_adapter.py`). The API still does not fetch the stored `osint_sources.url` column; if adapters ever switch to that column, validate it the same way before the first request.
+11. Bluesky post deletion: Heimdall does not re-fetch or purge stored Bluesky post text after a user deletes a post on Bluesky, and `system_logs` has no delete path. Documented under Data privacy; accepted for the course without stripping post text from logs.
