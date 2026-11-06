@@ -1,6 +1,6 @@
 # OWASP Top 10 (2021) audit
 
-Audit of the Heimdall prototype as implemented in this repository, reviewed on 2026-10-08. Every control below was checked against the current source. This is a local prototype: Docker Compose publishes plain HTTP, and there is no separate production configuration in the repo.
+Audit of the Heimdall prototype as implemented in this repository, originally reviewed on 2026-10-08 and refreshed on 2026-11-05 for the live OSINT path (A04, A07, A09, A10). Every control below was checked against the current source. This is a local prototype: Docker Compose publishes plain HTTP, and there is no separate production configuration in the repo.
 
 Scope: `backend/app/`, `backend/alembic/versions/`, `docker-compose.yml`, the `.env.example` files, `ai-brain/`, `vision/`, `frontend/`, `.github/workflows/ci.yml`, and `.github/dependabot.yml`.
 
@@ -73,15 +73,15 @@ Queries in `backend/app/main.py` and `backend/app/auth.py` use the SQLAlchemy OR
 
 ## A04 Insecure Design
 
-**Applies.** The prototype is a shared operational store with a single class of user.
+**Applies.** The prototype is a shared operational store with a single class of user, and the live OSINT path can change camera mode.
 
 **What the code does.** The implemented design is a FastAPI service in front of PostgreSQL, with OSINT and vision as separate HTTP clients and a browser console that polls the API. Threat events must name an OSINT source, a camera, or both (`ck_threat_events_has_origin` in `backend/app/models.py`). Soft-deleted sources, events, and alerts are hidden from normal reads and cannot be referenced by new rows (`backend/app/main.py`). Duplicate usernames, source names, and camera ids return HTTP 409.
 
-The same design gives every registered user full read and write access, leaves registration on by default, and has no abuse throttling (see A07). `ai-brain/main.py` classifies local mock JSON. It does not pull live OSINT feeds, and it does not call the vision module. `vision/main.py` always processes still images for camera id 1. OSINT output does not change camera mode.
+The same design gives every registered user full read and write access, leaves registration on by default, and has no abuse throttling (see A07). `FEATURE_LIVE_OSINT` defaults to off in `ai-brain/osint_settings.py` (`live_osint_enabled`). When it is off, `ai-brain/main.py` classifies local mock JSON only; that path does not call the vision module and does not change camera mode. When the flag is on, `LiveOsintRunner` in `ai-brain/live_osint.py` polls the configured ntfy and RSS adapters, classifies matching items, and feeds them to `CorroborationTracker` in `ai-brain/corroboration.py`. Camera activation runs only after that tracker returns a corroboration: two distinct `source_id` values with the same normalized object class inside `CORROBORATION_WINDOW_SECONDS` (default 300). The same source twice never corroborates, and class `unknown` never corroborates even from two sources. On a hit, `CameraActivator` in `ai-brain/camera_activation.py` PATCHes the events to `Corroborated`, PUTs `CAMERA_ID` (default 1) to `Active`, and posts a system log. The camera row must already exist. `vision/main.py` still processes still images for camera id 1 and does not depend on OSINT for its current capture loop.
 
 **Status: Partial.**
 
-**Remaining gap.** One shared privilege level and open registration are the access-control design, not an unfinished check around a role model. The `users` table has no role to enforce.
+**Remaining gap.** One shared privilege level and open registration are the access-control design, not an unfinished check around a role model. The `users` table has no role to enforce. Live corroboration gates activation, but any authenticated account can still PUT a camera to `Active` directly through the API.
 
 ## A05 Security Misconfiguration
 
@@ -112,17 +112,17 @@ The same design gives every registered user full read and write access, leaves r
 
 ## A07 Identification and Authentication Failures
 
-**Applies.** Operators, the OSINT client, and the vision client all log in with a username and password.
+**Applies.** Operators, the OSINT client (mock and live), and the vision client all log in with a username and password.
 
 **What the code does.** `POST /auth/register` lowercases the username, enforces the schema rules above, and stores an Argon2 hash. `POST /auth/login` looks up an active, non-deleted user by lowercased username and calls `verify_password`. Failure uses one message, `Invalid or expired authentication credentials.`, for an unknown user and a wrong password (`backend/app/auth.py`). Success returns a signed access token and `token_type` `bearer`.
 
-`GET /auth/me` returns the user for that token. Inactive or soft-deleted users fail both login and later requests. The OSINT client (`ai-brain/osint_client.py`) and the vision client (`vision/vision_client.py`) post to `/auth/login` and send `Authorization: Bearer` on later calls. The console (`frontend/heimdall_console.html`) does the same, then calls `/auth/me`, and clears the password field after the attempt. Logout in the console drops the in-memory token only. There is no logout route.
+`GET /auth/me` returns the user for that token. Inactive or soft-deleted users fail both login and later requests. The OSINT client (`ai-brain/osint_client.py`) and the vision client (`vision/vision_client.py`) post to `/auth/login` and send `Authorization: Bearer` on later calls. Both the mock path and the live path in `ai-brain/main.py` call `HeimdallAPIClient.authenticate()` with `OSINT_API_USERNAME` and `OSINT_API_PASSWORD` before registering sources or polling feeds. The live path also calls `GET /auth/me` through `current_user_id()` so JSON pipeline logs can tag `user_id` (`ai-brain/osint_logging.py`). The console (`frontend/heimdall_console.html`) logs in the same way, then calls `/auth/me`, and clears the password field after the attempt. Logout in the console drops the in-memory token only. There is no logout route.
 
-No module under `backend/app/` implements login rate limiting, an attempt counter, or account lockout. The console maps HTTP 429 to a “too many attempts” string, and the API never returns 429.
+No module under `backend/app/` implements login rate limiting, an attempt counter, or account lockout. The console maps HTTP 429 to a “too many attempts” string, and the API never returns 429. A login rate-limit design exists as plan-only in `docs/agent/plans/T17.md`; it is not wired into `backend/app/auth.py`.
 
 **Status: Partial.**
 
-**Remaining gap.** Login rate limiting and account lockout are absent. Tokens cannot be revoked before expiry.
+**Remaining gap.** Login rate limiting and account lockout are absent. Tokens cannot be revoked before expiry. The live OSINT service account authenticates once at startup over the same unprotected login route.
 
 ## A08 Software and Data Integrity Failures
 
@@ -142,9 +142,9 @@ Alembic revisions in `backend/alembic/versions/` are the schema history. Current
 
 **Applies.** Authentication and data changes should be traceable. The repo has an application log table and a CI secret scan, which are different things.
 
-**What the code does.** `system_logs` in `backend/app/models.py` stores `module` and `message`, with an optional `event_id`. Rows are created only when a client calls `POST /system-logs`. The OSINT agent and the vision pipeline post those rows after a successful classification or detection (`ai-brain/osint_agent.py`, `vision/main.py`). List and create both require a bearer token. The table has no `deleted_at` column, and `GET /system-logs` returns every row.
+**What the code does.** `system_logs` in `backend/app/models.py` stores `module` and `message`, with an optional `event_id`. Rows are created only when a client calls `POST /system-logs`. The OSINT agent posts a row after a successful classification (`ai-brain/osint_agent.py`), including the raw alert text in the message. On live corroboration, `CameraActivator._write_activation_log` in `ai-brain/camera_activation.py` posts a second row (module `osint-agent`) that names the class, source ids, and camera Active. The vision pipeline posts after a detection (`vision/main.py`). List and create both require a bearer token. The table has no `deleted_at` column, and `GET /system-logs` returns every row.
 
-The live OSINT loop writes JSON lines to stderr (`ai-brain/osint_logging.py`, `ai-brain/live_osint.py`). Each classify, corroborate, keyword-drop, and error event carries `timestamp`, `level`, `request_id` (one per source poll and one per classified item), and `user_id` (the OSINT service account, read from `GET /auth/me` in `ai-brain/osint_client.py`). Events log the exception message and alert metadata, not credentials or the bearer token. They are not shipped anywhere; they stay on the process's stderr.
+The live OSINT loop writes JSON lines to stderr (`ai-brain/osint_logging.py`, configured from `ai-brain/main.py` `_run_live`, emitted from `ai-brain/live_osint.py` and `ai-brain/keyword_filter.py`). Each classify, corroborate, keyword-drop, and error event carries `timestamp`, `level`, `request_id` (one per source poll and one per classified item), and `user_id` (the OSINT service account, read from `GET /auth/me` in `ai-brain/osint_client.py`). Events log the exception message and alert metadata, not credentials or the bearer token. They are not shipped anywhere; they stay on the process's stderr. The default mock path does not enable that JSON stream.
 
 `backend/app/` does not import a logger and does not write login success, login failure, or registration to `system_logs` or anywhere else. Uvicorn is started with no custom log configuration. There is no metrics or alerting service in Compose.
 
@@ -152,15 +152,17 @@ TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets.
 
 **Status: Partial.**
 
-**Remaining gap.** No authentication or authorization audit trail. `system_logs` is caller-supplied application text, so any authenticated user can insert a log line. Nothing in the repo alerts on repeated failed logins.
+**Remaining gap.** No authentication or authorization audit trail. `system_logs` is caller-supplied application text, so any authenticated user can insert a log line. Live pipeline JSON logs improve OSINT observability but are not an auth audit log and are not retained by the API. Nothing in the repo alerts on repeated failed logins.
 
 ## A10 Server-Side Request Forgery
 
 **Applies to outbound calls.** The API itself does not fetch a URL supplied by the client. The OSINT module does make server-side HTTP requests.
 
-**What the code does.** `backend/app/main.py` talks only to PostgreSQL. It stores `osint_sources.url` and never requests it.
+**What the code does.** `backend/app/main.py` talks only to PostgreSQL. It stores `osint_sources.url` and never requests it. That column is registration metadata written by the adapters' `registration_payload()` methods; the live loop never re-reads it for an HTTP GET.
 
-`ai-brain/osint_client.py` uses `requests` against `BASE_URL` (default `http://localhost:8000`) with a 10-second timeout. Paths are fixed: `/auth/login`, `/auth/me`, `/sources`, `/threat-events`, and `/system-logs`. `ai-brain/osint_agent.py` sends alert text to Groq through `ChatGroq` (`model` `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set. Mock alerts are read from local JSON files in `ai-brain/main.py`, not from the source URL.
+`ai-brain/osint_client.py` uses `requests` against `BASE_URL` (default `http://localhost:8000`) with a 10-second timeout. Paths are fixed: `/auth/login`, `/auth/me`, `/sources`, `/threat-events`, `/system-logs`, and (via `CameraActivator`) `/camera-states` plus threat-event PATCH. `ai-brain/osint_agent.py` sends alert text to Groq through `ChatGroq` (`model` `openai/gpt-oss-20b`) when `GROQ_API_KEY` is set. When `FEATURE_LIVE_OSINT` is off, mock alerts are read from local JSON files in `ai-brain/main.py`, not from any feed URL.
+
+When `FEATURE_LIVE_OSINT` is on, `LiveOsintRunner._select_adapters` in `ai-brain/live_osint.py` builds `NtfyAdapter.from_env()` and `RssAdapter.from_env()`. `NtfyAdapter` (`ai-brain/ntfy_adapter.py`) GETs `{NTFY_SERVER}/{NTFY_TOPIC}/json?poll=1&since=...` (default server `https://ntfy.sh`, topic required). `RssAdapter` (`ai-brain/rss_adapter.py`) GETs `RSS_FEED_URL` (default `http://localhost:8001/feed.xml`). Both use a 10-second timeout. Those targets come from environment variables listed in `ai-brain/.env.example`. There is no URL scheme check, private-network block, or destination allowlist in the adapters or in `backend/app/schemas.py` (`url` is only `min_length=1`).
 
 `vision/vision_client.py` calls the same style of fixed paths on `BASE_URL`, plus `/camera-states`. `vision/detector.py` can download `yolov8n.pt` through Ultralytics. The browser map in `frontend/heimdall_console.html` loads OpenStreetMap tiles in the client, not on the API server.
 
@@ -168,7 +170,7 @@ TruffleHog in `.github/workflows/ci.yml` scans git history for verified secrets.
 
 **Status: Partial.**
 
-**Remaining gap.** Outbound OSINT traffic goes to the configured API origin and to Groq, with no separate allowlist module. Stored source URLs are not fetched today. A later fetcher would be starting from an unvalidated string field.
+**Remaining gap.** Live OSINT already performs server-side GETs to operator-configured ntfy and RSS URLs with no allowlist. The API still does not fetch stored `osint_sources.url` values. Anyone who can set the OSINT process environment (or who later switches adapters to the stored column) controls those destinations.
 
 ## Data privacy
 
@@ -207,23 +209,23 @@ The schema has no email, phone, or street-address columns. Vision posts class na
 | A01 Broken Access Control | Yes | Partial | No roles or object ownership. Registration defaults to on. |
 | A02 Cryptographic Failures | Yes | Partial | Argon2 and signed, expiring JWTs are in place. Transport is HTTP. Tokens are not revocable. |
 | A03 Injection | Yes | Implemented | ORM and Pydantic validation. `url` is only a non-empty string. |
-| A04 Insecure Design | Yes | Partial | Single privilege level for every account. OSINT does not gate the camera pipeline. |
+| A04 Insecure Design | Yes | Partial | Single privilege level for every account. Live corroboration gates camera Active; any auth user can still PUT camera state. |
 | A05 Security Misconfiguration | Yes | Partial | Docs, root containers, and published Postgres. Secrets come from the environment. |
 | A06 Vulnerable and Outdated Components | Yes | Partial | Accepted `pip-audit` ignores. Unpinned OSINT deps. Frontend job has no `pip-audit`. |
-| A07 Identification and Authentication Failures | Yes | Partial | Hashed passwords and bearer JWTs. No login rate limit or lockout. |
+| A07 Identification and Authentication Failures | Yes | Partial | Hashed passwords and bearer JWTs. Mock and live OSINT share `/auth/login`. No rate limit or lockout. |
 | A08 Software and Data Integrity Failures | Yes | Partial | CI, Alembic, Dependabot, TruffleHog. Unpinned OSINT deps and unsigned YOLO weights. |
-| A09 Security Logging and Monitoring Failures | Yes | Partial | No auth audit log. `system_logs` is client-written application data. |
-| A10 Server-Side Request Forgery | Yes | Partial | API does not fetch stored URLs. OSINT calls the configured API and Groq. |
+| A09 Security Logging and Monitoring Failures | Yes | Partial | No auth audit log. Live OSINT JSON stderr logs exist. `system_logs` is client-written. |
+| A10 Server-Side Request Forgery | Yes | Partial | API does not fetch stored URLs. Live OSINT GETs env-configured ntfy and RSS with no allowlist. |
 
 ## Open items
 
 1. Add an authorization model. Today every active user can call every data route (`backend/app/main.py`).
 2. Turn off public registration after service accounts exist (`ENABLE_USER_REGISTRATION` defaults to `true`).
-3. Add login rate limiting and lockout. Neither exists under `backend/app/`.
+3. Add login rate limiting and lockout. Neither exists under `backend/app/`. Plan-only design: `docs/agent/plans/T17.md`.
 4. Add a way to revoke access tokens before `exp`, or document a short lifetime as the only control. Logout is client-side only.
 5. Plan TLS before any host other than localhost. Compose exposes HTTP ports only.
 6. Clear the accepted backend audit ignores when the major upgrades land: `PYSEC-2026-1845` (pytest) and `PYSEC-2026-161`, `PYSEC-2026-248`, `PYSEC-2026-249`, `PYSEC-2026-2280`, `PYSEC-2026-2281` (Starlette via FastAPI). See comments in `.github/workflows/ci.yml`.
 7. Pin `ai-brain/requirements.txt` and run `pip-audit` on `frontend/requirements.txt` in CI.
-8. Record authentication failures and administrative changes in a log the client cannot forge. `system_logs` is not that log.
+8. Record authentication failures and administrative changes in a log the client cannot forge. Live OSINT JSON lines on stderr and client-written `system_logs` rows are not that log.
 9. Decide whether `/docs`, `/redoc`, and `/openapi.json` stay public.
-10. If OSINT later fetches `osint_sources.url`, validate the URL and allowlist destinations before the first request. The current client does not fetch that column.
+10. Allowlist or otherwise constrain live OSINT outbound GETs to `NTFY_SERVER`/`NTFY_TOPIC` and `RSS_FEED_URL` (`ai-brain/ntfy_adapter.py`, `ai-brain/rss_adapter.py`). The API still does not fetch the stored `osint_sources.url` column; if adapters ever switch to that column, validate it the same way before the first request.
