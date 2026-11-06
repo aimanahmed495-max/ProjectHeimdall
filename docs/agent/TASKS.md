@@ -38,7 +38,7 @@ T12 OSINT QA log draft | deps: T03 | todo
   `docs/qa/osint-qa-log.md`: test, edge case, severity (low/medium/high), result, resolution, linked issue (TODO if none). Only rows backed by a test that exists and was run.
   Accept: no row without a test behind it. Aiman posts it on the QA issue.
 
-T13 OSINT README refresh | deps: T01 | todo
+T13 OSINT README refresh | deps: T01 | done
   `ai-brain/README.md` and the OSINT statements in `README.md`. Remove the stale claim that OSINT does not switch the camera. Document the flag, shared classes, the E2E suite, and the demo steps.
   Accept: no statement contradicts the code.
 
