@@ -661,3 +661,235 @@ I certify as Team Lead that all entries above accurately represent AI usage with
 * Ruby successfully parsed the workflow: `YAML syntax valid`.
 * `docker compose config --quiet` completed successfully: `Docker Compose config valid`.
 * The Playwright workflow had previously passed locally after correcting the initial iframe locator failure.
+
+## 2026-11-05 — Prototype 3 agent-assisted work (Cursor)
+
+Entries for the Cursor agent tasks in `docs/agent/TASKS.md` and two frontend changes by Zareer. Prompts, outputs and verification are reconstructed from the agent sessions.
+
+### 23:59 T02 OSINT pipeline E2E, matching sources
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#61`
+- **Branch:** `agent/T02`
+- **Prompt submitted:** "Take task T02 from docs/agent/TASKS.md. Link issue #61."
+- **AI output summary:** Added `tests/e2e_pipeline/` (marker `e2e`). A session fixture runs `alembic upgrade head`, starts the real API with uvicorn on a free localhost port against the test Postgres, and always stops it. The test registers the OSINT user and camera 1 (reset to Dormant), runs `LiveOsintRunner` with two `StaticAdapter` sources and a scripted classifier that returns `person` and posts real threat events, `max_cycles=1`, then checks over HTTP that camera 1 is Active and both events are Corroborated with distinct source ids. `pyproject.toml` registers the marker and deselects it by default (`-m 'not e2e'`), so `pytest tests/` in the frontend CI job is unchanged. No new dependency, no `ci.yml` change.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `POSTGRES_PORT=5433 .venv/osint/bin/pytest -m e2e tests/e2e_pipeline`: 1 passed, run four times in a row against the same database. A temporary copy with a keyword filter that matches nothing failed on `'Dormant' == 'Active'`; the copy was deleted. No uvicorn process left after passing and failing runs. `.venv/frontend/bin/pytest tests/ -q`: 5 passed, 1 deselected. `ruff check` and `ruff format --check` on `tests/e2e_pipeline`: clean. `bash scripts/check`: OK, run from a temporary copy that only changes `POSTGRES_PORT` to 5433, against a throwaway local Postgres 16 cluster.
+
+### 23:59 T06 OSINT structured logging
+- **Date:** 2026-11-04 (work finished after midnight, 2026-11-05)
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#64`
+- **Branch:** `agent/T06`
+- **Prompt submitted:** "Take task T06 from docs/agent/TASKS.md. Link issue #64."
+- **AI output summary:** Added `ai-brain/osint_logging.py` (JSON formatter, `log_context`, `log_event`, `configure_logging`). The live loop now logs classify, corroborate, keyword-drop, and error events as JSON lines with `timestamp`, `level`, `request_id`, and `user_id` instead of printing them. `user_id` comes from a new `HeimdallAPIClient.current_user_id()` that calls `GET /auth/me`. The banner prints in `main.py` and `live_osint.py` are unchanged. Added 14 tests in `ai-brain/tests/test_osint_logging.py` and noted the logs and the `/auth/me` call in `docs/OWASP_AUDIT.md` (A09, A10). Partway through, another agent switched the shared checkout to `agent/T17` and the three commits landed there; they were moved to `agent/T06`, `agent/T17` was reset to `main`, and work continued in `.worktrees/T06`.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Aiman's T06 work was moved onto the wrong branch by the agent's branch switch in the shared checkout and was cleaned up by hand.
+- **Verification:** In a checkout without `.env`: `pytest ai-brain/tests` 43 passed; `pytest ai-brain/tests/test_osint_logging.py` 14 passed on three consecutive runs; `ruff check backend/ ai-brain/ vision/` passed; `complexipy` passed for `backend`, `ai-brain`, and `vision`. `bash scripts/check` was not run locally: one `.venv` only, and Postgres was not running. Backend and frontend tests were not run locally; this change does not touch either.
+
+### 00:00 T09 OSINT pipeline doc
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#66`
+- **Branch:** `agent/T09`
+- **Prompt submitted:** "Take task T09 from docs/agent/TASKS.md. Link issue #66."
+- **AI output summary:** Wrote `docs/OSINT_PIPELINE.md` from the code in `ai-brain/` on `main`: live and mock data flow with a Mermaid diagram, the ntfy and RSS adapters, an environment variable table matching `ai-brain/.env.example`, and failure behavior at startup and inside the live loop. It notes that `DEMO_FEED_PORT` is read by `demo_feed.py` but missing from `.env.example`, and lists the failure cases that have no test yet.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** A script compared the env table with `ai-brain/.env.example` (same 12 names, order, and values: match). Backend source checked for the 404 on `PUT /camera-states/{camera_id}`. `bash scripts/check` in a clean worktree at the doc commit: ruff, complexipy, `ai-brain` tests, and frontend tests passed; alembic and backend tests failed because the local Postgres rejects the `test` user (environment, not this change).
+
+### 00:00 T14 demo reset and preflight script
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#70`
+- **Branch:** `agent/T14`
+- **Prompt submitted:** "Take task T14 from docs/agent/TASKS.md. Link issue #70."
+- **AI output summary:** Added `scripts/demo_reset.sh`, which checks `GET /health`, logs in with `OSINT_API_USERNAME`/`OSINT_API_PASSWORD` from the environment, reads camera `CAMERA_ID` (default 1), PUTs it back to `Dormant` with its current fps and resolution, and prints the RSS feed, live OSINT loop, ntfy, and demo-feed commands. Documented it in `ai-brain/README.md`. Credentials and the token are passed to `curl` through stdin and file descriptors, never as arguments or output.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `shellcheck` 0.11.0 (throwaway venv, not a project dependency) on `scripts/demo_reset.sh`: no findings. Ran the script against a throwaway local fake API with synthetic credentials: happy path set camera 1 from Active 15 fps 1080p to Dormant 15 fps 1080p; wrong password, missing credentials, missing camera, invalid `CAMERA_ID`, and unreachable API each exited 1 with a clear message. Credentials and token appeared in neither the output nor the logged `curl` argument lists. `ruff`, `complexipy`, `pytest ai-brain/tests -q` (29 passed), `pytest tests/ -q` (5 passed). `bash scripts/check`: the Alembic and backend test steps failed locally because Postgres on port 5432 has no `test` role; not caused by this change; left to CI. Not run against the real API or Postgres.
+
+### 00:00 T17 login rate limiting plan
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#72`
+- **Branch:** `agent/T17`
+- **Prompt submitted:** "Take task T17 from docs/agent/TASKS.md. Link issue #72."
+- **AI output summary:** The agent first checked the task's precondition ("confirm no teammate owns auth") and found that Arham owns backend auth (#21, PR #22, and the commit history of `auth.py`), so it stopped and asked. After Aiman chose "write the plan as a proposal for Arham", it wrote `docs/agent/plans/T17.md`. The plan proposes an in-memory failure counter in a new `backend/app/rate_limit.py`, keyed per (IP, username) with a looser per-IP cap, that returns 429 with `Retry-After`. It needs no new dependency and no migration, changes about 10 lines of `auth.py`, and lists tests, docs, and four open questions for Arham. No code was written.
+- **Human review and modifications:** Aiman chose to have the plan written as a proposal for Arham rather than as agent-owned work. During the session, the agent's branch switch in the shared checkout collided with the parallel T06 agent, whose commits landed on `agent/T17`. The agent stopped and reported it; the T06 commits were moved to `agent/T06` and T17 continued in its own worktree. Review of the plan itself: Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `bash scripts/check` in the `agent/T17` worktree: ruff, complexipy, `ai-brain` tests, and frontend tests passed. `alembic upgrade head` and the backend tests failed because the local Postgres rejects the `test` user (environment; the change is docs-only). Ownership was checked with `gh issue view 21`, `gh pr list --author sadidarham`, and `git log -- backend/app/auth.py`.
+
+### 00:01 T15 Bluesky adapter plan
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#71`
+- **Branch:** `agent/T15`
+- **Prompt submitted:** "Take task T15 from docs/agent/TASKS.md. Plan only, do not build. Link issue #71."
+- **AI output summary:** Wrote `docs/agent/plans/T15.md`. The plan checks Bluesky's API and auth rules against the official docs and public issue reports, and finds that unauthenticated `searchPosts` returns 403 intermittently while `getAuthorFeed` is documented as no-auth. It recommends a `getAuthorFeed` watchlist adapter behind `FEATURE_BLUESKY` with no new dependency, one source id for every Bluesky account, and `indexedAt` timestamps. It also lists files, env variables, 11 fixture tests, OWASP updates, and four open questions. No code was written. The build is blocked on T01.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Aiman approved the plan before the build.
+- **Verification:** No live request was sent to Bluesky (a manual `curl` check is listed in the plan). `bash scripts/check` in the `agent/T15` worktree: ruff, complexipy, `ai-brain` tests, and frontend tests passed. `alembic upgrade head` and the backend tests failed because the local Postgres rejects the `test` user (environment, not this change).
+
+### 00:01 T16 plan: vision trigger-driven activation
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#34`
+- **Branch:** `agent/T16`
+- **Prompt submitted:** "Take task T16 from docs/agent/TASKS.md. Plan only, do not build. Link issue #34."
+- **AI output summary:** Wrote `docs/agent/plans/T16.md`. Vision becomes read-only on camera state: it polls `GET /camera-states/{id}` and captures only while OSINT's `CameraActivator` has the camera Active. The plan covers webcam and video-file frame sources, `FEATURE_PI_CAMERA` (placeholder until T18), a per-class post cooldown, re-login on 401, the tests, the doc and OWASP updates, and four open questions. No code under `vision/` changed.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Aiman approved the plan before the build.
+- **Verification:** `bash scripts/check` ran on `agent/T16`. Ruff, complexipy, the OSINT tests, and the frontend tests passed. `alembic upgrade head` and the backend tests failed because the local Postgres on port 5432 rejected the CI test credentials (`test`/`test`). That is an environment issue; this branch changes only Markdown files.
+
+### 00:03 T01 shared object classes
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#60`
+- **Branch:** `cursor/t01-shared-object-classes-979e`
+- **Prompt submitted:** Take task T01 from `docs/agent/TASKS.md`. Link issue #60.
+- **AI output summary:** Added `ai-brain/object_classes.py` to map classifier labels onto person, vehicle, crowd, package, or unknown; wired it into `ThreatClassification` and `CorroborationTracker`; tightened the allowed-class list in the system prompt; added mapping and synonym-corroboration tests; marked T01 done in the task queue.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Stale test assertions broken by the T01/T06 merge were fixed in #83.
+- **Verification:** `bash scripts/check` printed `OK`. `pytest ai-brain/tests/test_object_classes.py ai-brain/tests/test_corroboration.py -v` — 40 passed.
+
+### 18:04 T04 CI step for the pipeline E2E (plan)
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#63`
+- **Branch:** `cursor/t04-ci-pipeline-e2e-7956`
+- **Prompt submitted:** "Take task T04 from docs/agent/TASKS.md. Link issue #63."
+- **AI output summary:** Wrote `docs/agent/plans/T04.md`. Recommends a new `e2e-pipeline` GitHub Actions job with a Postgres 17 service (same credentials as the backend job) running `pytest -m e2e tests/e2e_pipeline -q`, with the exact YAML and a rejection of adding a step to the existing Playwright/Compose `e2e` job because of shared-database contamination. No `ci.yml` edit in this PR.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. `ci.yml` cannot be written by the tools, so Aiman applied the workflow edits by hand (Ubuntu 24.04, Playwright install without `--with-deps`, timeouts).
+- **Verification:** `bash scripts/check` failed on this branch and on a stash that restored `main` content: `ai-brain/tests/test_osint_logging.py::test_corroborate_event_has_required_fields` asserts corroboration category `weapon` but the logger records `unknown` after T01 class normalization. Unrelated to this docs-only plan; no second attempt to "fix" that failure on this branch.
+### 18:06 T03 pipeline E2E, negative and failure cases
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#62`
+- **Branch:** `cursor/t03-pipeline-e2e-negative-f6ee`
+- **Prompt submitted:** "Take task T03 from docs/agent/TASKS.md. Link issue #62."
+- **AI output summary:** Extended `tests/e2e_pipeline/test_osint_pipeline.py` with four cases on the T02 harness: different classes leave camera 1 Dormant; reports outside the corroboration window stay Pending; a source `ConnectionError` does not stop the runner or the healthy source; the same source reporting twice never corroborates. Shared helpers (`build_runner`, `ScriptedClassifier` queue, `FailingAdapter`) keep the suite DRY. Marked T02 and T03 done in `docs/agent/TASKS.md`. Also fixed two pre-existing assertions in `ai-brain/tests/test_osint_logging.py` that still expected corroboration category `weapon` after T01 normalization maps it to `unknown`.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `.venv/osint/bin/pytest -m e2e tests/e2e_pipeline`: 5 passed on five consecutive runs; no leftover uvicorn. `bash scripts/check`: OK.
+
+
+### 18:30 Frontend threat-status filter correction
+
+- **Date:** 2026-11-05
+- **Team member:** Zareer Sanjeed Khan
+- **Tool used:** Codex
+- **Associated Git issue:** #85
+- **Branch:** `fix/frontend-history-filters`
+
+- **Assistance:** Suggested replacing legacy history-filter statuses with Pending, Corroborated, and Resolved; adding Corroborated to the rule filter; adding an accessible history-filter label; and adding two regression tests. Also suggested ignoring generated frontend-console dependencies.
+
+- **Human review and modifications:** Zareer manually applied the changes in VS Code, inspected the diff, and ran the JavaScript and Python frontend tests. Peer review is pending.
+
+- **Verification:** `npm test --prefix tests/frontend-console`: 50 passed, including both new regression tests. `python -m pytest tests/test_dashboard.py tests/test_frontend_demo_api.py -q`: 5 passed, 1 dependency deprecation warning. `git diff --check`: no whitespace errors. Playwright and the full CI suite have not been rerun for this fix.
+### 18:30 T01 follow-up: never corroborate on unknown
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#60`
+- **Branch:** `agent/T01-unknown-fix`
+- **Prompt submitted:** Follow-up to T01 (issue #60). Make `CorroborationTracker` never corroborate on `unknown`; add tests for two unknowns and different unmapped labels; change `ScriptedAgent` to emit `person` and update logging/e2e assertions; branch `agent/T01-unknown-fix`, one PR, link #60.
+- **AI output summary:** `CorroborationTracker.observe` returns early when the normalized class is `unknown`. Added unit tests for two explicit unknowns and for different unmapped labels (`weapon`/`drone`). `ScriptedAgent` now emits `person`; logging and live-osint activation assertions expect `person`. Noted the unknown rule in `docs/OSINT_PIPELINE.md`. `tests/e2e_pipeline/` already used `person`, so no edit there.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Aiman had the unknown-never-corroborates rule added after review (#84).
+- **Verification:** `bash scripts/check` printed `OK`. `.venv/osint/bin/pytest ai-brain/tests/test_corroboration.py ai-brain/tests/test_osint_logging.py ai-brain/tests/test_live_osint.py -q`: 38 passed.
+
+### 18:59 T09 OSINT pipeline doc refresh
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#66`
+- **Branch:** `cursor/t09-osint-pipeline-doc-f6be`
+- **Prompt submitted:** Refresh `docs/OSINT_PIPELINE.md` to match main now that T01, T06 and the unknown fix are merged (shared classes, JSON logging on stderr, unknown never corroborates). Docs only. Link issue #66.
+- **AI output summary:** Updated the pipeline doc with shared object-class normalization, JSON-line logging events (`keyword_drop`, `classify`, `corroborate`, `error`), the unknown-never-corroborates rule, and refreshed failure/test-coverage notes. Marked T06 and T09 done in `docs/agent/TASKS.md`.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** Env table script matched all 12 names/order/example values in `ai-brain/.env.example`. `bash scripts/check` printed `OK`.
+### 18:59 T08 OWASP audit refresh for live OSINT
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#65`
+- **Branch:** `cursor/t08-owasp-audit-refresh-7551`
+- **Prompt submitted:** "Take task T08 from docs/agent/TASKS.md. Link issue #65."
+- **AI output summary:** Docs-only refresh of `docs/OWASP_AUDIT.md` for A04, A07, A09, A10, the Summary table, and Open items. Documented that live corroboration (`CorroborationTracker` / `CameraActivator`, behind `FEATURE_LIVE_OSINT`) gates camera Active, that ntfy and RSS adapters GET env-configured URLs (not the stored `osint_sources.url` column), and that login rate limiting remains plan-only (`docs/agent/plans/T17.md`). Marked T08 done in `docs/agent/TASKS.md`.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** Spot-checked claims against `ai-brain/corroboration.py`, `camera_activation.py`, `ntfy_adapter.py`, `rss_adapter.py`, `live_osint.py`, `main.py`, `osint_client.py`, and `osint_logging.py`. Confirmed stale phrases about OSINT never changing camera mode / never fetching feeds are gone. `bash scripts/check` printed `OK`.
+### 18:57 T12 OSINT QA log draft
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#68`
+- **Branch:** `cursor/t12-osint-qa-log-bc7d`
+- **Prompt submitted:** "Take task T12 from docs/agent/TASKS.md. Link issue #68."
+- **AI output summary:** Added `docs/qa/osint-qa-log.md` with one row per existing OSINT unit or E2E test that was run in this session (test path, edge case, severity, result, resolution, linked issue). Marked T12 done in `docs/agent/TASKS.md`. No production code changes.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `.venv/osint/bin/pytest ai-brain/tests -q`: 78 passed. `.venv/osint/bin/pytest -m e2e tests/e2e_pipeline -v`: 5 passed. `bash scripts/check`: OK.
+### 19:00 T11 docstring pass, OSINT module
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#67`
+- **Branch:** `cursor/t11-osint-docstrings-3cbe`
+- **Prompt submitted:** "Take task T11 from docs/agent/TASKS.md. Link issue #67."
+- **AI output summary:** Filled Google-style `Args` / `Returns` / `Raises` / `Yields` / `Attributes` sections on every public class and method under `ai-brain/` (adapters, client, agent, live loop, logging, settings, demo feed, and related helpers). No executable code changed.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** AST dump with docstrings stripped matched `HEAD` for all 14 touched files (behavior-changing files: none). `bash scripts/check` printed `OK`.
+### 18:58 T13 OSINT README refresh
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#69`
+- **Branch:** `cursor/t13-osint-readme-refresh-8d49`
+- **Prompt submitted:** "Take task T13 from docs/agent/TASKS.md. Link issue #69."
+- **AI output summary:** Refreshed `ai-brain/README.md` and the OSINT statements in root `README.md`: removed the stale claim that OSINT does not switch the camera; documented `FEATURE_LIVE_OSINT`, shared object classes (including that `unknown` never corroborates), the `tests/e2e_pipeline` E2E suite, and demo steps plus `scripts/demo_reset.sh`. Env block matches `ai-brain/.env.example`. Marked T13 done in `docs/agent/TASKS.md`.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** Compared the README env block to `ai-brain/.env.example` (exact match). Confirmed root README no longer contains "does not switch". `bash scripts/check` printed `OK`.
+
+### 19:42 T16 build: vision trigger-driven activation
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#34`
+- **Branch:** `agent/T16-build`
+- **Prompt submitted:** Build T16 from `docs/agent/plans/T16.md` (issue #34). Plan approved; include optional E2E now that T02 is merged. Decisions: PiCameraSource placeholder until T18; keep raw COCO names; do not add auto-return to Dormant. Branch `agent/T16-build`, one PR, Closes #34.
+- **AI output summary:** Replaced the run-once still-image pipeline with `VisionRunner` that polls camera state and captures only while Active. Added frame sources (webcam/video/static + Pi placeholder), settings, per-class throttle, read-only `get_camera_state` with 401 re-login, unit tests, optional E2E after OSINT corroboration, `scripts/check` vision step, and docs/OWASP updates.
+- **Human review and modifications:** Decisions from the prompt were applied as given (placeholder Pi source, raw COCO names, no auto-Dormant). Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `.venv/osint/bin/pytest vision/tests -q`: 23 passed. `PYTHONPATH=. .venv/backend/bin/pytest vision/tests backend/tests/test_vision_client.py --cov=vision`: 30 passed, 86% total coverage. `.venv/backend/bin/pytest -m e2e tests/e2e_pipeline -q`: 6 passed. `bash scripts/check`: OK. Webcam/manual demo not run in this environment (no camera).
+### 19:54 T15 Bluesky watchlist adapter build
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#71`
+- **Branch:** `agent/T15-build`
+- **Prompt submitted:** "Build T15 from docs/agent/plans/T15.md (issue #71). The plan is approved: getAuthorFeed watchlist adapter behind FEATURE_BLUESKY, reliability_score 0.5, at most 10 accounts, 25 posts per page, 10 minute startup window. Record the post-deletion gap as a documented open item in docs/OWASP_AUDIT.md; do not strip post text from logs. Branch agent/T15-build, one PR, Closes #71."
+- **AI output summary:** Added `BlueskyAdapter` (`ai-brain/bluesky_adapter.py`) polling unauthenticated `getAuthorFeed` for a short actor watchlist behind `FEATURE_BLUESKY` (default off). Wired through `bluesky_enabled()` and `LiveOsintRunner._select_adapters`. Fixture tests cover filtering, dedup, URL shape, per-actor failures, and corroboration with a non-Bluesky source. Updated `.env.example`, README, `OSINT_PIPELINE.md`, and OWASP A04/A10/privacy plus open item 11 for the deletion gap without stripping post text.
+- **Human review and modifications:** Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something. Approval choices already applied: reliability 0.5, limits 10/25/10m, deletion gap as open item, do not strip post text.
+- **Verification:** `.venv/osint/bin/pytest ai-brain/tests -q`: 89 passed. `ruff check ai-brain/` and `complexipy ai-brain --max-complexity-allowed 15` passed. `bash scripts/check`: OK. No live Bluesky request was sent.
+
+### 20:19 T17 build: login rate limiting
+- **Date:** 2026-11-05
+- **Team member:** Aiman Ahmed (`@aimanahmed495-max`)
+- **Tool used:** Cursor
+- **Associated Git issue:** `#72`
+- **Branch:** `agent/T17-build`
+- **Prompt submitted:** Build T17 from `docs/agent/plans/T17.md`. Team Lead explicitly authorized minimal edits to `backend/app/auth.py` for this task only. Do not touch `security.py`, `models.py`, migrations, `docker-compose.yml`, or `.github/`. Branch `agent/T17-build`, one PR to main, Closes #72.
+- **AI output summary:** Added in-memory `LoginRateLimiter` in `backend/app/rate_limit.py` and wired it into `POST /auth/login` (~10 lines in `auth.py`): check before password verify, 429 with `Retry-After` when over limit, reset per-user count on success. Unit and route tests cover over-limit, success reset, separate keys, window expiry, IP cap, disable switch, and eviction. Updated `.env.example`, `backend/README.md`, `docs/DEVELOPER_SETUP.md`, OWASP A07/A09, and marked T17 done in `docs/agent/TASKS.md`.
+- **Human review and modifications:** Authorization for `auth.py` came from Aiman in the prompt. Aiman read the merged diff and the PR review summary, and relied on CI results (all checks green) rather than rerunning locally. Small fixes made by hand where changes broke something.
+- **Verification:** `bash scripts/check` printed `OK`. `pytest backend/tests/test_rate_limit.py backend/tests/test_auth.py`: 26 passed.
+### 20:40 Frontend Event History Playwright coverage
+
+- **Date:** 2026-11-05
+- **Team member:** Zareer Sanjeed Khan
+- **Tool used:** Codex
+- **Associated Git issue:** #97
+- **Branch:** `test/frontend-history-e2e`
+
+- **Assistance:** Suggested extending the existing authenticated E2E flow with assertions for Event History visibility, seeded records, Pending/Corroborated/Resolved options, Pending-only filtering, reset behavior, and preserved sign-out coverage. Diagnosed an initial local failure as stale Docker data outside the seven-day history window.
+- **Human review and modifications:** Zareer manually inserted and reviewed the assertions, removed assumptions about zero Resolved records and exact reset counts, reset the local test database, and reran the test.
+- **Verification:** `git diff --check` passed. `node --check tests/e2e/heimdall.spec.js` passed. A fresh Docker database was seeded with six threat events. `npm test --prefix tests/e2e` passed: 1 test.
