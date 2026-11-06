@@ -6,11 +6,11 @@ T01 shared object classes | deps: none | done
   In `ai-brain/`, normalize the classifier output to one of person, vehicle, crowd, package, unknown so different sources can corroborate. Map obvious synonyms (man, woman, suspect to person; car, truck, van to vehicle; and so on). Anything else becomes unknown. Do not change the model call or prompt wording beyond listing the allowed classes.
   Accept: unit tests for each mapping and the unknown fallback; a corroboration test where two sources return different synonyms for the same class and still corroborate; `bash scripts/check` passes.
 
-T02 pipeline E2E, matching sources | deps: none | todo
+T02 pipeline E2E, matching sources | deps: none | done
   `tests/e2e_pipeline/test_osint_pipeline.py`, marker `e2e` (`tests/e2e/` is the Playwright package). Start the real API as a subprocess against the local test Postgres (backend venv), register the OSINT user and camera 1, then run `LiveOsintRunner` with two `StaticAdapter` sources and a scripted fake classifier returning the same class, `max_cycles=1`. Assert camera 1 becomes Active and the threat events become Corroborated.
   Accept: the test passes locally; no network; the API subprocess is always stopped. If this needs a new dependency or a ci.yml change: plan only.
 
-T03 pipeline E2E, negative and failure cases | deps: T02 | todo
+T03 pipeline E2E, negative and failure cases | deps: T02 | done
   Same harness. Cases: different classes leave camera 1 Dormant; reports outside the window do not corroborate; one source raising a request error does not stop the other source or the runner; the same source twice does not corroborate.
   Accept: one test per case, all pass, none flaky across five consecutive runs.
 
