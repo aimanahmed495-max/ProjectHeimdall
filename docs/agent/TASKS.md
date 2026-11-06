@@ -14,7 +14,7 @@ T03 pipeline E2E, negative and failure cases | deps: T02 | done
   Same harness. Cases: different classes leave camera 1 Dormant; reports outside the window do not corroborate; one source raising a request error does not stop the other source or the runner; the same source twice does not corroborate.
   Accept: one test per case, all pass, none flaky across five consecutive runs.
 
-T04 CI step for the pipeline E2E | deps: T02 | todo
+T04 CI step for the pipeline E2E | deps: T02 | done
   Plan only (touches `.github/workflows/ci.yml`). An `e2e` job already exists (Docker Compose + Playwright). Prefer adding a step to it over a new job; otherwise a job with a Postgres service that runs `pytest -m e2e`.
   Accept: plan in `docs/agent/plans/T04.md` with the exact YAML and why it is safe.
 
@@ -42,7 +42,7 @@ T13 OSINT README refresh | deps: T01 | done
   `ai-brain/README.md` and the OSINT statements in `README.md`. Remove the stale claim that OSINT does not switch the camera. Document the flag, shared classes, the E2E suite, and the demo steps.
   Accept: no statement contradicts the code.
 
-T14 demo reset and preflight script | deps: none | todo
+T14 demo reset and preflight script | deps: none | done
   `scripts/demo_reset.sh`: check `/health`, log in with the OSINT credentials from the environment, set camera 1 to Dormant (read its current fps and resolution first), print the ntfy and RSS demo commands. Never print credentials.
   Accept: shellcheck-clean by inspection; documented in `ai-brain/README.md`.
 
