@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+# Canonical classes shared by the classifier and corroboration tracker.
 ALLOWED_OBJECT_CLASSES = frozenset(
     {"person", "vehicle", "crowd", "package", "unknown"}
 )

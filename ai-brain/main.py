@@ -294,7 +294,11 @@ class OsintIngestionApp:
 
 
 def main() -> int:
-    """Entrypoint used by ``python main.py``."""
+    """Entrypoint used by ``python main.py``.
+
+    Returns:
+        Process exit code from :meth:`OsintIngestionApp.run`.
+    """
 
     return OsintIngestionApp().run()
 

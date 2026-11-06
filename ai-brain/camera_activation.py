@@ -16,17 +16,41 @@ class ThreatApi(Protocol):
         event_id: int,
         update: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """PATCH one threat event."""
+        """PATCH one threat event.
+
+        Args:
+            event_id: Threat event to update.
+            update: Fields such as ``status`` and ``corroborated_at``.
+
+        Returns:
+            The updated threat-event record from the API.
+        """
 
     def put_camera_state(
         self,
         camera_id: int,
         state: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """PUT one camera state."""
+        """PUT one camera state.
+
+        Args:
+            camera_id: ``camera_states.camera_id`` to update.
+            state: Replacement ``mode``, ``fps``, and ``resolution``.
+
+        Returns:
+            The updated camera-state record from the API.
+        """
 
     def post_system_log(self, log_entry: Dict[str, Any]) -> Dict[str, Any]:
-        """POST one system log."""
+        """POST one system log.
+
+        Args:
+            log_entry: Payload with ``module``, ``message``, and optional
+                ``event_id``.
+
+        Returns:
+            The created system-log record from the API.
+        """
 
 
 class CameraActivator:
@@ -61,7 +85,12 @@ class CameraActivator:
         self._clock = clock or self._now
 
     def activate(self, corroboration: Corroboration) -> None:
-        """Publish one corroboration. A later call is a separate activation."""
+        """Publish one corroboration. A later call is a separate activation.
+
+        Args:
+            corroboration: Category, event ids, and source ids to publish.
+                An empty ``event_ids`` tuple is a no-op.
+        """
 
         if not corroboration.event_ids:
             return

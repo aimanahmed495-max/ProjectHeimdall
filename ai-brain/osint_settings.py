@@ -9,6 +9,9 @@ def live_osint_enabled() -> bool:
     """Return True when ``FEATURE_LIVE_OSINT`` is turned on.
 
     The default is off, which keeps the mock JSON ingestion path.
+
+    Returns:
+        ``True`` for ``1``, ``true``, ``yes``, or ``on`` (case-insensitive).
     """
 
     raw = os.getenv("FEATURE_LIVE_OSINT", "false")
@@ -16,19 +19,31 @@ def live_osint_enabled() -> bool:
 
 
 def poll_seconds() -> float:
-    """Return ``OSINT_POLL_SECONDS``, or 5 when the value is unusable."""
+    """Return ``OSINT_POLL_SECONDS``, or 5 when the value is unusable.
+
+    Returns:
+        A positive poll interval in seconds.
+    """
 
     return _positive_float("OSINT_POLL_SECONDS", 5.0)
 
 
 def corroboration_window_seconds() -> int:
-    """Return ``CORROBORATION_WINDOW_SECONDS``, or 300 by default."""
+    """Return ``CORROBORATION_WINDOW_SECONDS``, or 300 by default.
+
+    Returns:
+        A positive corroboration window length in seconds.
+    """
 
     return _positive_int("CORROBORATION_WINDOW_SECONDS", 300)
 
 
 def camera_id() -> int:
-    """Return ``CAMERA_ID``, or 1 when the value is unusable."""
+    """Return ``CAMERA_ID``, or 1 when the value is unusable.
+
+    Returns:
+        A positive Heimdall camera id.
+    """
 
     return _positive_int("CAMERA_ID", 1)
 
