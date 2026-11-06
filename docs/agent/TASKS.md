@@ -50,9 +50,9 @@ T15 Bluesky adapter | deps: T01 | todo
   Plan only first (new dependency and network behavior; verify the Bluesky API and auth requirements). Then a `SourceAdapter` behind `FEATURE_BLUESKY` (default off) with fixture tests, registered as a source, with `.env.example` and docs updated.
   Accept: plan in `docs/agent/plans/T15.md`; build only after Aiman approves it.
 
-T16 vision trigger-driven activation (#34) | deps: T02 | todo
-  Plan only first (touches `vision/`). Webcam or video-file frames into YOLOv8n, `vision/` no longer activates the camera itself, activation comes from corroboration, detections post as threat events with the camera ID, `FEATURE_PI_CAMERA` (default off) selects the source.
-  Accept: plan in `docs/agent/plans/T16.md`; build only after Aiman approves it.
+T16 vision trigger-driven activation (#34) | deps: T02 | done
+  Webcam or video-file frames into YOLOv8n, `vision/` no longer activates the camera itself, activation comes from corroboration, detections post as threat events with the camera ID, `FEATURE_PI_CAMERA` (default off) selects the source.
+  Accept: plan in `docs/agent/plans/T16.md`; build after Aiman approved it.
 
 T17 login rate limiting | deps: none | todo
   Plan only (touches `backend/app/auth.py`). Closes the OWASP A07 gap. Confirm no teammate owns auth first.
