@@ -4,6 +4,9 @@ from __future__ import annotations
 
 from typing import Any, List, Tuple
 
+# (object_class, confidence, x1, y1, x2, y2) in pixel coordinates.
+Detection = Tuple[str, float, float, float, float, float]
+
 
 class ThreatDetector:
     """Run YOLOv8 on a single frame and return high-confidence detections."""
@@ -27,20 +30,21 @@ class ThreatDetector:
         self._confidence_threshold = confidence_threshold
         self._model = YOLO(model_path)
 
-    def detect(self, frame: Any) -> List[Tuple[str, float]]:
+    def detect(self, frame: Any) -> List[Detection]:
         """Detect objects in one BGR frame.
 
         Args:
             frame: Image array in OpenCV BGR format.
 
         Returns:
-            A list of ``(object_class, confidence_score)`` tuples for
-            detections at or above the configured threshold. Class names
-            are the raw COCO labels from YOLO.
+            A list of ``(object_class, confidence, x1, y1, x2, y2)``
+            tuples for detections at or above the configured threshold.
+            Class names are the raw COCO labels from YOLO. Box corners
+            are pixel coordinates from the YOLO ``xyxy`` tensor.
         """
 
         results = self._model(frame, verbose=False)
-        detections: List[Tuple[str, float]] = []
+        detections: List[Detection] = []
 
         for result in results:
             if result.boxes is None:
@@ -52,7 +56,7 @@ class ThreatDetector:
     def _append_boxes(
         self,
         result: Any,
-        detections: List[Tuple[str, float]],
+        detections: List[Detection],
     ) -> None:
         """Keep boxes from one result that meet the confidence threshold."""
 
@@ -63,4 +67,5 @@ class ThreatDetector:
                 continue
             class_id = int(box.cls[0])
             object_class = str(names[class_id])
-            detections.append((object_class, confidence))
+            x1, y1, x2, y2 = (float(value) for value in box.xyxy[0])
+            detections.append((object_class, confidence, x1, y1, x2, y2))

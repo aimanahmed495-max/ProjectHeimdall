@@ -46,9 +46,10 @@ The credentials must match an active account created through `POST /auth/registe
 The `.env` file is ignored by Git and must not be committed.
 
 With `VISION_SHOW_WINDOW` on, each Active frame is shown in a local OpenCV
-window with detected class names and confidences overlaid. The window closes
-when the camera goes Dormant, the frame source is released, or the runner
-stops. If no display is available, vision logs a warning and continues.
+window with bounding boxes and class/confidence labels. Box color follows
+confidence: green (≥ 0.80), yellow (≥ 0.65), red (below 0.65). The window
+closes when the camera goes Dormant, the frame source is released, or the
+runner stops. If no display is available, vision logs a warning and continues.
 
 ## Trigger model
 

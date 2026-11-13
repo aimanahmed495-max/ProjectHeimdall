@@ -3,17 +3,23 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional, Tuple
+from typing import Any, Optional, Sequence, Tuple
+
+from detector import Detection
 
 logger = logging.getLogger(__name__)
 
 WINDOW_TITLE = "Heimdall camera feed"
-_TEXT_ORIGIN_X = 10
-_TEXT_ORIGIN_Y = 24
-_LINE_HEIGHT = 24
 _FONT_SCALE = 0.6
 _THICKNESS = 2
-_COLOR_BGR = (0, 255, 0)
+_LABEL_OFFSET_Y = 6
+
+# BGR colors for confidence bands.
+_COLOR_GREEN = (0, 255, 0)
+_COLOR_YELLOW = (0, 255, 255)
+_COLOR_RED = (0, 0, 255)
+_HIGH_CONFIDENCE = 0.80
+_MID_CONFIDENCE = 0.65
 
 
 class PreviewWindow:
@@ -42,13 +48,13 @@ class PreviewWindow:
     def show(
         self,
         frame: Any,
-        detections: List[Tuple[str, float]],
+        detections: Sequence[Detection],
     ) -> None:
-        """Draw labels on ``frame`` and display it for one waitKey tick.
+        """Draw boxes and labels on ``frame`` and display for one waitKey.
 
         Args:
             frame: Image array from the frame source. Must support ``copy``.
-            detections: ``(object_class, confidence)`` pairs to annotate.
+            detections: ``(class, confidence, x1, y1, x2, y2)`` tuples.
         """
 
         if not self._enabled or self._unavailable:
@@ -56,7 +62,7 @@ class PreviewWindow:
         try:
             cv2 = self._require_backend()
             annotated = frame.copy()
-            self._draw_labels(cv2, annotated, detections)
+            self._draw_detections(cv2, annotated, detections)
             cv2.imshow(self._title, annotated)
             cv2.waitKey(1)
             self._visible = True
@@ -91,27 +97,41 @@ class PreviewWindow:
         self._backend = cv2
         return cv2
 
-    @staticmethod
-    def _draw_labels(
+    @classmethod
+    def _draw_detections(
+        cls,
         cv2: Any,
         frame: Any,
-        detections: List[Tuple[str, float]],
+        detections: Sequence[Detection],
     ) -> None:
-        """Write class name and confidence lines onto ``frame``."""
+        """Draw a confidence-colored box and label for each detection."""
 
-        y = _TEXT_ORIGIN_Y
-        for object_class, confidence in detections:
+        for object_class, confidence, x1, y1, x2, y2 in detections:
+            color = cls._color_for_confidence(confidence)
+            top_left = (int(x1), int(y1))
+            bottom_right = (int(x2), int(y2))
+            cv2.rectangle(frame, top_left, bottom_right, color, _THICKNESS)
             text = f"{object_class} {confidence:.2f}"
+            text_origin = (int(x1), max(int(y1) - _LABEL_OFFSET_Y, 0))
             cv2.putText(
                 frame,
                 text,
-                (_TEXT_ORIGIN_X, y),
+                text_origin,
                 cv2.FONT_HERSHEY_SIMPLEX,
                 _FONT_SCALE,
-                _COLOR_BGR,
+                color,
                 _THICKNESS,
             )
-            y += _LINE_HEIGHT
+
+    @staticmethod
+    def _color_for_confidence(confidence: float) -> Tuple[int, int, int]:
+        """Return BGR color for a confidence score."""
+
+        if confidence >= _HIGH_CONFIDENCE:
+            return _COLOR_GREEN
+        if confidence >= _MID_CONFIDENCE:
+            return _COLOR_YELLOW
+        return _COLOR_RED
 
 
 def build_preview_window(

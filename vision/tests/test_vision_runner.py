@@ -77,7 +77,7 @@ def test_dormant_camera_does_not_open_or_post():
 def test_dormant_then_active_opens_and_posts():
     client = FakeClient([dormant_state(), active_state(fps=2)])
     source = FakeFrameSource()
-    detector = FakeDetector([("person", 0.91)])
+    detector = FakeDetector([("person", 0.91, 10.0, 20.0, 100.0, 200.0)])
     clock, sleep = advancing_clock()
     runner = VisionRunner(
         client,
@@ -329,7 +329,12 @@ def test_throttle_posts_once_inside_cooldown_then_again():
 def test_runner_applies_throttle_across_frames():
     client = FakeClient([active_state(fps=5)])
     source = FakeFrameSource()
-    detector = FakeDetector([("person", 0.9), ("car", 0.8)])
+    detector = FakeDetector(
+        [
+            ("person", 0.9, 10.0, 20.0, 100.0, 200.0),
+            ("car", 0.8, 30.0, 40.0, 130.0, 140.0),
+        ]
+    )
     clock, sleep = advancing_clock()
     runner = VisionRunner(
         client,
@@ -356,7 +361,7 @@ def test_active_frames_update_fake_preview():
     frame = FakeFrame("cam")
     client = FakeClient([active_state(fps=2)])
     source = FakeFrameSource(frames=[("frame-1", frame)])
-    detector = FakeDetector([("person", 0.88)])
+    detector = FakeDetector([("person", 0.88, 10.0, 20.0, 100.0, 200.0)])
     preview = FakePreview()
     clock, sleep = advancing_clock()
     runner = VisionRunner(
@@ -378,7 +383,7 @@ def test_active_frames_update_fake_preview():
     assert preview.shown
     shown_frame, shown_detections = preview.shown[0]
     assert shown_frame is frame
-    assert shown_detections == [("person", 0.88)]
+    assert shown_detections == [("person", 0.88, 10.0, 20.0, 100.0, 200.0)]
     assert preview.close_count >= 1
 
 

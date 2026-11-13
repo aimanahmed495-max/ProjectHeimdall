@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Callable, List, Optional, Protocol, Tuple
+from typing import Any, Callable, List, Optional, Protocol
 
+from detector import Detection
 from frame_sources import PI_CAMERA_MESSAGE, FrameSource
 from preview_window import PreviewWindow, build_preview_window
 from throttle import DetectionThrottle
@@ -25,8 +26,8 @@ DEFAULT_STATUS = "Pending"
 class Detector(Protocol):
     """The subset of ``ThreatDetector`` the runner needs."""
 
-    def detect(self, frame: Any) -> List[Tuple[str, float]]:
-        """Return ``(object_class, confidence)`` detections for one frame."""
+    def detect(self, frame: Any) -> List[Detection]:
+        """Return boxed detections for one frame."""
 
 
 class VisionRunner:
@@ -159,7 +160,7 @@ class VisionRunner:
             logger.warning("Detector failed on %s: %s", label, exc)
             return
         self._preview.show(frame, detections)
-        for object_class, confidence in detections:
+        for object_class, confidence, _x1, _y1, _x2, _y2 in detections:
             self._maybe_post(object_class, confidence, label)
 
     def _maybe_post(

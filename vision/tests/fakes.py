@@ -4,17 +4,20 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple
 
+from detector import Detection
 from vision_client import HeimdallAPIError, HeimdallAPIUnavailableError
+
+_DEFAULT_DETECTION: Detection = ("person", 0.9, 10.0, 20.0, 110.0, 180.0)
 
 
 class FakeDetector:
     """Return scripted detections for every frame."""
 
-    def __init__(self, detections: Optional[List[Tuple[str, float]]] = None) -> None:
-        self.detections = list(detections or [("person", 0.9)])
+    def __init__(self, detections: Optional[List[Detection]] = None) -> None:
+        self.detections = list(detections or [_DEFAULT_DETECTION])
         self.calls = 0
 
-    def detect(self, frame: Any) -> List[Tuple[str, float]]:
+    def detect(self, frame: Any) -> List[Detection]:
         self.calls += 1
         return list(self.detections)
 
@@ -137,10 +140,10 @@ class FakePreview:
     """Record preview show/close calls. No real display."""
 
     def __init__(self) -> None:
-        self.shown: List[Tuple[Any, List[Tuple[str, float]]]] = []
+        self.shown: List[Tuple[Any, List[Detection]]] = []
         self.close_count = 0
 
-    def show(self, frame: Any, detections: List[Tuple[str, float]]) -> None:
+    def show(self, frame: Any, detections: List[Detection]) -> None:
         self.shown.append((frame, list(detections)))
 
     def close(self) -> None:
@@ -155,12 +158,16 @@ class FakeCv2:
     def __init__(self) -> None:
         self.imshow_calls: List[Tuple[str, Any]] = []
         self.put_text_calls: List[Tuple[Any, ...]] = []
+        self.rectangle_calls: List[Tuple[Any, ...]] = []
         self.wait_key_calls: List[int] = []
         self.destroy_calls = 0
         self.imshow_error: Optional[BaseException] = None
 
     def putText(self, *args: Any) -> None:
         self.put_text_calls.append(args)
+
+    def rectangle(self, *args: Any) -> None:
+        self.rectangle_calls.append(args)
 
     def imshow(self, title: str, frame: Any) -> None:
         if self.imshow_error is not None:
