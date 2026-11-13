@@ -39,6 +39,7 @@ def main() -> int:
     print(f"Camera id: {settings.camera_id}")
     print(f"Frame source: {settings.frame_source}")
     print(f"FEATURE_PI_CAMERA: {settings.feature_pi_camera}")
+    print(f"VISION_SHOW_WINDOW: {settings.show_window}")
     print()
 
     try:

@@ -8,7 +8,9 @@ import pytest
 from fakes import (
     FakeClient,
     FakeDetector,
+    FakeFrame,
     FakeFrameSource,
+    FakePreview,
     HeimdallAPIUnavailableError,
     make_settings,
 )
@@ -301,3 +303,49 @@ def test_runner_applies_throttle_across_frames():
     classes = [event["object_class"] for event in client.threat_events]
     assert classes.count("person") == 1
     assert classes.count("car") == 1
+
+
+def test_active_frames_update_fake_preview():
+    frame = FakeFrame("cam")
+    client = FakeClient([active_state(fps=2)])
+    source = FakeFrameSource(frames=[("frame-1", frame)])
+    detector = FakeDetector([("person", 0.88)])
+    preview = FakePreview()
+    clock, sleep = advancing_clock()
+    runner = VisionRunner(
+        client,
+        detector,
+        source,
+        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0),
+        sleep=sleep,
+        clock=clock,
+        preview=preview,
+    )
+
+    assert runner.run(max_cycles=1) == 0
+
+    assert preview.shown
+    shown_frame, shown_detections = preview.shown[0]
+    assert shown_frame is frame
+    assert shown_detections == [("person", 0.88)]
+    assert preview.close_count >= 1
+
+
+def test_dormant_closes_preview_without_show():
+    client = FakeClient([dormant_state()])
+    preview = FakePreview()
+    clock, sleep = advancing_clock()
+    runner = VisionRunner(
+        client,
+        FakeDetector(),
+        FakeFrameSource(),
+        make_settings(state_poll_seconds=1.0),
+        sleep=sleep,
+        clock=clock,
+        preview=preview,
+    )
+
+    assert runner.run(max_cycles=1) == 0
+
+    assert preview.shown == []
+    assert preview.close_count >= 1

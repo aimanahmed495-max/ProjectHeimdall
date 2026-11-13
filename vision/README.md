@@ -38,9 +38,15 @@ cp .env.example .env
 | `VISION_FRAME_SOURCE` | `0` | Webcam index (digits), video file path, or image directory |
 | `VISION_STATE_POLL_SECONDS` | `2` | How often to re-check camera mode |
 | `VISION_EVENT_COOLDOWN_SECONDS` | `30` | Minimum gap between two posts of the same class |
+| `VISION_SHOW_WINDOW` | `false` | `1` / `true` / `yes` / `on` opens an OpenCV preview titled "Heimdall camera feed" while Active (demo only) |
 
 The credentials must match an active account created through `POST /auth/register`.
 The `.env` file is ignored by Git and must not be committed.
+
+With `VISION_SHOW_WINDOW` on, each Active frame is shown in a local OpenCV
+window with detected class names and confidences overlaid. The window closes
+when the camera goes Dormant, the frame source is released, or the runner
+stops. If no display is available, vision logs a warning and continues.
 
 ## Trigger model
 

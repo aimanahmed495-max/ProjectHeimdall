@@ -7,6 +7,7 @@ import time
 from typing import Any, Callable, List, Optional, Protocol, Tuple
 
 from frame_sources import PI_CAMERA_MESSAGE, FrameSource
+from preview_window import PreviewWindow, build_preview_window
 from throttle import DetectionThrottle
 from vision_client import (
     HeimdallAPIError,
@@ -41,6 +42,7 @@ class VisionRunner:
         sleep: Optional[Callable[[float], None]] = None,
         clock: Optional[Callable[[], float]] = None,
         throttle: Optional[DetectionThrottle] = None,
+        preview: Optional[PreviewWindow] = None,
     ) -> None:
         """Wire the vision loop.
 
@@ -52,6 +54,7 @@ class VisionRunner:
             sleep: Wait function, replaced in tests.
             clock: Monotonic clock, replaced in tests.
             throttle: Per-class post cooldown. Defaults from settings.
+            preview: Optional frame preview. Defaults from ``show_window``.
         """
 
         self._client = client
@@ -64,6 +67,7 @@ class VisionRunner:
             settings.event_cooldown_seconds,
             clock=self._clock,
         )
+        self._preview = preview or build_preview_window(settings.show_window)
 
     def run(self, max_cycles: Optional[int] = None) -> int:
         """Poll until interrupted, or until ``max_cycles`` when set.
@@ -145,7 +149,7 @@ class VisionRunner:
             self._sleep(frame_delay)
 
     def _process_one_frame(self) -> None:
-        """Read one frame, detect, and post throttled events."""
+        """Read one frame, detect, preview, and post throttled events."""
 
         labeled = self._source.read()
         if labeled is None:
@@ -156,6 +160,7 @@ class VisionRunner:
         except Exception as exc:  # noqa: BLE001 - keep the loop alive
             logger.warning("Detector failed on %s: %s", label, exc)
             return
+        self._preview.show(frame, detections)
         for object_class, confidence in detections:
             self._maybe_post(object_class, confidence, label)
 
@@ -211,7 +216,8 @@ class VisionRunner:
         return value
 
     def _close_source(self) -> None:
-        """Release the frame source when it is open."""
+        """Release the frame source and close any preview window."""
 
         if self._source.is_open:
             self._source.close()
+        self._preview.close()

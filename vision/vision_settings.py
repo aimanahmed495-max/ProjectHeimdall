@@ -20,6 +20,7 @@ class VisionSettings:
     state_poll_seconds: float
     event_cooldown_seconds: float
     feature_pi_camera: bool
+    show_window: bool
 
 
 def load_settings() -> VisionSettings:
@@ -36,6 +37,7 @@ def load_settings() -> VisionSettings:
         state_poll_seconds=state_poll_seconds(),
         event_cooldown_seconds=event_cooldown_seconds(),
         feature_pi_camera=pi_camera_enabled(),
+        show_window=show_window_enabled(),
     )
 
 
@@ -48,7 +50,25 @@ def pi_camera_enabled() -> bool:
         ``True`` for ``1``, ``true``, ``yes``, or ``on`` (case-insensitive).
     """
 
-    raw = os.getenv("FEATURE_PI_CAMERA", "false")
+    return _flag_enabled("FEATURE_PI_CAMERA")
+
+
+def show_window_enabled() -> bool:
+    """Return True when ``VISION_SHOW_WINDOW`` is turned on.
+
+    The default is off. Accepted spellings match ``FEATURE_PI_CAMERA``.
+
+    Returns:
+        ``True`` for ``1``, ``true``, ``yes``, or ``on`` (case-insensitive).
+    """
+
+    return _flag_enabled("VISION_SHOW_WINDOW")
+
+
+def _flag_enabled(name: str) -> bool:
+    """Return True when an env flag uses a known truthy spelling."""
+
+    raw = os.getenv(name, "false")
     return raw.strip().lower() in _TRUE_VALUES
 
 

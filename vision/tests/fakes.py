@@ -133,6 +133,60 @@ class FakeClient:
         raise AssertionError(f"vision must not write camera state: PUT {state}")
 
 
+class FakePreview:
+    """Record preview show/close calls. No real display."""
+
+    def __init__(self) -> None:
+        self.shown: List[Tuple[Any, List[Tuple[str, float]]]] = []
+        self.close_count = 0
+
+    def show(self, frame: Any, detections: List[Tuple[str, float]]) -> None:
+        self.shown.append((frame, list(detections)))
+
+    def close(self) -> None:
+        self.close_count += 1
+
+
+class FakeCv2:
+    """Minimal ``cv2`` stand-in for ``PreviewWindow`` unit tests."""
+
+    FONT_HERSHEY_SIMPLEX = 0
+
+    def __init__(self) -> None:
+        self.imshow_calls: List[Tuple[str, Any]] = []
+        self.put_text_calls: List[Tuple[Any, ...]] = []
+        self.wait_key_calls: List[int] = []
+        self.destroy_calls = 0
+        self.imshow_error: Optional[BaseException] = None
+
+    def putText(self, *args: Any) -> None:
+        self.put_text_calls.append(args)
+
+    def imshow(self, title: str, frame: Any) -> None:
+        if self.imshow_error is not None:
+            raise self.imshow_error
+        self.imshow_calls.append((title, frame))
+
+    def waitKey(self, delay: int) -> int:
+        self.wait_key_calls.append(delay)
+        return 0
+
+    def destroyAllWindows(self) -> None:
+        self.destroy_calls += 1
+
+
+class FakeFrame:
+    """Frame object with ``copy`` for annotation tests."""
+
+    def __init__(self, tag: str = "frame") -> None:
+        self.tag = tag
+        self.copy_count = 0
+
+    def copy(self) -> "FakeFrame":
+        self.copy_count += 1
+        return FakeFrame(tag=f"{self.tag}-copy")
+
+
 def make_settings(**overrides):
     """Build a ``VisionSettings`` with test-friendly defaults."""
 
@@ -144,6 +198,7 @@ def make_settings(**overrides):
         "state_poll_seconds": 0.05,
         "event_cooldown_seconds": 30.0,
         "feature_pi_camera": False,
+        "show_window": False,
     }
     values.update(overrides)
     return VisionSettings(**values)
@@ -153,8 +208,11 @@ def make_settings(**overrides):
 __all__ = [
     "FakeCapture",
     "FakeClient",
+    "FakeCv2",
     "FakeDetector",
+    "FakeFrame",
     "FakeFrameSource",
+    "FakePreview",
     "HeimdallAPIError",
     "HeimdallAPIUnavailableError",
     "make_settings",
