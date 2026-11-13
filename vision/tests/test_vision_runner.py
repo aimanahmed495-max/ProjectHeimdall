@@ -87,6 +87,7 @@ def test_dormant_then_active_opens_and_posts():
             camera_id=7,
             state_poll_seconds=1.0,
             event_cooldown_seconds=0.0,
+            active_fps=2.0,
         ),
         sleep=sleep,
         clock=clock,
@@ -109,7 +110,11 @@ def test_active_then_dormant_closes_source():
     source = FakeFrameSource()
     detector = FakeDetector()
     clock, sleep = advancing_clock()
-    settings = make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0)
+    settings = make_settings(
+        state_poll_seconds=1.0,
+        event_cooldown_seconds=0.0,
+        active_fps=2.0,
+    )
     runner = VisionRunner(
         client,
         detector,
@@ -159,7 +164,11 @@ def test_runner_never_writes_camera_state():
         client,
         FakeDetector(),
         FakeFrameSource(),
-        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0),
+        make_settings(
+            state_poll_seconds=1.0,
+            event_cooldown_seconds=0.0,
+            active_fps=2.0,
+        ),
         sleep=sleep,
         clock=clock,
     )
@@ -169,8 +178,8 @@ def test_runner_never_writes_camera_state():
     assert not hasattr(client, "set_camera_state_called")
 
 
-def test_frame_pacing_follows_row_fps():
-    client = FakeClient([active_state(fps=5)])
+def test_frame_pacing_follows_active_fps():
+    client = FakeClient([active_state()])
     source = FakeFrameSource()
     detector = FakeDetector()
     sleeps: list[float] = []
@@ -187,7 +196,11 @@ def test_frame_pacing_follows_row_fps():
         client,
         detector,
         source,
-        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0),
+        make_settings(
+            state_poll_seconds=1.0,
+            event_cooldown_seconds=0.0,
+            active_fps=60.0,
+        ),
         sleep=sleep,
         clock=clock,
     )
@@ -195,8 +208,34 @@ def test_frame_pacing_follows_row_fps():
     assert runner.run(max_cycles=1) == 0
 
     assert sleeps
-    assert all(pytest.approx(delay, rel=1e-6) == 0.2 for delay in sleeps)
-    assert detector.calls == len(sleeps) == 5
+    assert all(pytest.approx(delay, rel=1e-6) == 1.0 / 60.0 for delay in sleeps)
+    assert detector.calls == len(sleeps) == 60
+
+
+def test_dormant_idle_follows_dormant_fps():
+    client = FakeClient([dormant_state()])
+    sleeps: list[float] = []
+    now = [0.0]
+
+    def clock() -> float:
+        return now[0]
+
+    def sleep(delay: float) -> None:
+        sleeps.append(delay)
+        now[0] += delay
+
+    runner = VisionRunner(
+        client,
+        FakeDetector(),
+        FakeFrameSource(),
+        make_settings(dormant_fps=15.0),
+        sleep=sleep,
+        clock=clock,
+    )
+
+    assert runner.run(max_cycles=1) == 0
+
+    assert sleeps == [pytest.approx(1.0 / 15.0)]
 
 
 def test_api_unavailable_keeps_polling_and_releases_source(caplog):
@@ -216,7 +255,11 @@ def test_api_unavailable_keeps_polling_and_releases_source(caplog):
         client,
         FakeDetector(),
         source,
-        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0),
+        make_settings(
+            state_poll_seconds=1.0,
+            event_cooldown_seconds=0.0,
+            active_fps=2.0,
+        ),
         sleep=sleep,
         clock=clock,
     )
@@ -292,7 +335,11 @@ def test_runner_applies_throttle_across_frames():
         client,
         detector,
         source,
-        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=30.0),
+        make_settings(
+            state_poll_seconds=1.0,
+            event_cooldown_seconds=30.0,
+            active_fps=5.0,
+        ),
         sleep=sleep,
         clock=clock,
         throttle=DetectionThrottle(30.0, clock=clock),
@@ -316,7 +363,11 @@ def test_active_frames_update_fake_preview():
         client,
         detector,
         source,
-        make_settings(state_poll_seconds=1.0, event_cooldown_seconds=0.0),
+        make_settings(
+            state_poll_seconds=1.0,
+            event_cooldown_seconds=0.0,
+            active_fps=2.0,
+        ),
         sleep=sleep,
         clock=clock,
         preview=preview,

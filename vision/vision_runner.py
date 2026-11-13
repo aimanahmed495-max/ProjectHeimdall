@@ -20,7 +20,6 @@ logger = logging.getLogger(__name__)
 
 MODULE_NAME = "vision"
 DEFAULT_STATUS = "Pending"
-DEFAULT_FPS = 5.0
 
 
 class Detector(Protocol):
@@ -130,19 +129,18 @@ class VisionRunner:
 
         mode = state.get("mode")
         if mode == "Active":
-            self._run_active(state)
+            self._run_active()
             return
 
         self._close_source()
-        self._sleep(self._settings.state_poll_seconds)
+        self._sleep(1.0 / self._settings.dormant_fps)
 
-    def _run_active(self, state: dict) -> None:
+    def _run_active(self) -> None:
         """Open the source and process frames until the poll window ends."""
 
         if not self._source.is_open:
             self._source.open()
-        fps = self._fps_from_state(state)
-        frame_delay = 1.0 / fps
+        frame_delay = 1.0 / self._settings.active_fps
         deadline = self._clock() + self._settings.state_poll_seconds
         while self._clock() < deadline:
             self._process_one_frame()
@@ -202,18 +200,6 @@ class VisionRunner:
             )
         except (HeimdallAPIError, HeimdallAPIUnavailableError) as exc:
             logger.warning("Failed to post detection: %s", exc)
-
-    def _fps_from_state(self, state: dict) -> float:
-        """Return a positive fps from the camera row, or the default."""
-
-        raw = state.get("fps", DEFAULT_FPS)
-        try:
-            value = float(raw)
-        except (TypeError, ValueError):
-            return DEFAULT_FPS
-        if value <= 0:
-            return DEFAULT_FPS
-        return value
 
     def _close_source(self) -> None:
         """Release the frame source and close any preview window."""

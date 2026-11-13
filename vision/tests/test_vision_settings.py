@@ -61,6 +61,8 @@ def test_load_settings_reads_env(monkeypatch):
     monkeypatch.setenv("VISION_STATE_POLL_SECONDS", "4.5")
     monkeypatch.setenv("VISION_EVENT_COOLDOWN_SECONDS", "15")
     monkeypatch.setenv("VISION_SHOW_WINDOW", "yes")
+    monkeypatch.setenv("VISION_ACTIVE_FPS", "60")
+    monkeypatch.setenv("VISION_DORMANT_FPS", "15")
 
     loaded = settings.load_settings()
     assert loaded.feature_pi_camera is True
@@ -69,3 +71,19 @@ def test_load_settings_reads_env(monkeypatch):
     assert loaded.state_poll_seconds == 4.5
     assert loaded.event_cooldown_seconds == 15.0
     assert loaded.show_window is True
+    assert loaded.active_fps == 60.0
+    assert loaded.dormant_fps == 15.0
+
+
+def test_fps_defaults_and_invalid_fallback(monkeypatch, caplog):
+    monkeypatch.delenv("VISION_ACTIVE_FPS", raising=False)
+    monkeypatch.delenv("VISION_DORMANT_FPS", raising=False)
+    assert settings.active_fps() == 60.0
+    assert settings.dormant_fps() == 15.0
+
+    monkeypatch.setenv("VISION_ACTIVE_FPS", "0")
+    monkeypatch.setenv("VISION_DORMANT_FPS", "nope")
+    with caplog.at_level(logging.WARNING):
+        assert settings.active_fps() == 60.0
+        assert settings.dormant_fps() == 15.0
+    assert len(caplog.records) >= 2

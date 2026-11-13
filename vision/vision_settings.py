@@ -21,6 +21,8 @@ class VisionSettings:
     event_cooldown_seconds: float
     feature_pi_camera: bool
     show_window: bool
+    active_fps: float
+    dormant_fps: float
 
 
 def load_settings() -> VisionSettings:
@@ -38,6 +40,8 @@ def load_settings() -> VisionSettings:
         event_cooldown_seconds=event_cooldown_seconds(),
         feature_pi_camera=pi_camera_enabled(),
         show_window=show_window_enabled(),
+        active_fps=active_fps(),
+        dormant_fps=dormant_fps(),
     )
 
 
@@ -113,6 +117,26 @@ def event_cooldown_seconds() -> float:
     """
 
     return _positive_float("VISION_EVENT_COOLDOWN_SECONDS", 30.0)
+
+
+def active_fps() -> float:
+    """Return ``VISION_ACTIVE_FPS``, or 60 when unusable.
+
+    Returns:
+        Frame pace used while the camera row is Active.
+    """
+
+    return _positive_float("VISION_ACTIVE_FPS", 60.0)
+
+
+def dormant_fps() -> float:
+    """Return ``VISION_DORMANT_FPS``, or 15 when unusable.
+
+    Returns:
+        State-poll pace used while the camera row is Dormant.
+    """
+
+    return _positive_float("VISION_DORMANT_FPS", 15.0)
 
 
 def _positive_int(name: str, default: int) -> int:

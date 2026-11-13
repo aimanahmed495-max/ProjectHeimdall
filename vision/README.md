@@ -36,8 +36,10 @@ cp .env.example .env
 | `FEATURE_PI_CAMERA` | `false` | `1` / `true` / `yes` / `on` selects the Pi placeholder (refuses until T18) |
 | `VISION_CAMERA_ID` | `1` | Camera row to poll and attach to threat events |
 | `VISION_FRAME_SOURCE` | `0` | Webcam index (digits), video file path, or image directory |
-| `VISION_STATE_POLL_SECONDS` | `2` | How often to re-check camera mode |
+| `VISION_STATE_POLL_SECONDS` | `2` | How often to re-check camera mode while Active (and on poll errors) |
 | `VISION_EVENT_COOLDOWN_SECONDS` | `30` | Minimum gap between two posts of the same class |
+| `VISION_ACTIVE_FPS` | `60` | Frame pace while the camera row is Active |
+| `VISION_DORMANT_FPS` | `15` | How often to re-poll camera state while Dormant (15 Hz) |
 | `VISION_SHOW_WINDOW` | `false` | `1` / `true` / `yes` / `on` opens an OpenCV preview titled "Heimdall camera feed" while Active (demo only) |
 
 The credentials must match an active account created through `POST /auth/register`.
@@ -53,9 +55,10 @@ stops. If no display is available, vision logs a warning and continues.
 1. Seed or the console registers camera `VISION_CAMERA_ID`.
 2. Live OSINT corroboration (or an operator) sets that camera to `Active`.
 3. Vision polls `GET /camera-states/{id}`. While `Active`, it opens the frame
-   source, runs YOLOv8n, and posts threat events (raw COCO class names) plus
-   system logs. While `Dormant` or missing (404), it releases the source and
-   only polls.
+   source at `VISION_ACTIVE_FPS` (default 60), runs YOLOv8n, and posts threat
+   events (raw COCO class names) plus system logs. While `Dormant`, it releases
+   the source and re-polls at `VISION_DORMANT_FPS` (default 15 Hz). Missing
+   camera rows (404) still wait `VISION_STATE_POLL_SECONDS`.
 4. Nothing in vision returns the camera to `Dormant`. Use the console or
    `scripts/demo_reset.sh` after a demo.
 

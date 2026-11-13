@@ -199,6 +199,8 @@ def make_settings(**overrides):
         "event_cooldown_seconds": 30.0,
         "feature_pi_camera": False,
         "show_window": False,
+        "active_fps": 60.0,
+        "dormant_fps": 15.0,
     }
     values.update(overrides)
     return VisionSettings(**values)
